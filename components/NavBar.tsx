@@ -1,11 +1,19 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  SparklesIcon,
+  ListBulletIcon,
+  BanknotesIcon,
+  ShoppingBagIcon,
+  ArrowRightStartOnRectangleIcon,
+} from '@heroicons/react/24/outline';
 
 const LINKS = [
-  { href: '/', label: 'Best deals' },
-  { href: '/watchlists', label: 'Watchlists' },
-  { href: '/orders', label: 'Buy orders' },
+  { href: '/', label: 'Best deals', icon: SparklesIcon },
+  { href: '/watchlists', label: 'Watchlists', icon: ListBulletIcon },
+  { href: '/orders', label: 'Buy orders', icon: BanknotesIcon },
+  { href: '/purchases', label: 'Purchases', icon: ShoppingBagIcon },
 ];
 
 export function NavBar() {
@@ -21,19 +29,23 @@ export function NavBar() {
   }
 
   return (
-    <header className="border-b border-neutral-800 bg-neutral-950/80 backdrop-blur sticky top-0 z-10">
+    <header className="sticky top-0 z-10 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <nav className="flex items-center gap-1">
           {LINKS.map((l) => {
             const active = pathname === l.href;
+            const Icon = l.icon;
             return (
               <Link
                 key={l.href}
                 href={l.href}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  active ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-100'
+                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:bg-surface hover:text-foreground'
                 }`}
               >
+                <Icon className="h-4 w-4" aria-hidden="true" />
                 {l.label}
               </Link>
             );
@@ -41,8 +53,9 @@ export function NavBar() {
         </nav>
         <button
           onClick={logout}
-          className="rounded-lg px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-200"
+          className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
         >
+          <ArrowRightStartOnRectangleIcon className="h-4 w-4" aria-hidden="true" />
           Sign out
         </button>
       </div>

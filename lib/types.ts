@@ -26,10 +26,28 @@ export interface WatchMatch {
   seenAt: number; // epoch ms
 }
 
+// One completed purchase, either auto-buy or a manual confirm. `via`
+// distinguishes them since only auto-buy has a rule (steamPct/thirdPct) to
+// show; a manual buy just has the price paid.
+export interface Purchase {
+  id: string;
+  watchId: string | null;
+  name: string;
+  exterior: string;
+  site: string;
+  price: number;
+  float: number | null;
+  via: 'auto' | 'manual';
+  steamPct: number | null;
+  thirdPct: number | null;
+  at: number; // epoch ms
+}
+
 export interface WatchlistState {
   updatedAt: number;
   watches: WatchItem[];
   matches: WatchMatch[]; // most recent match per watch, from the bot's last sweep
+  purchases: Purchase[]; // most recent purchases, newest first
 }
 
 export type OrderStatus = 'top' | 'outbid' | 'ceiling' | 'pending' | 'error';
@@ -46,10 +64,20 @@ export interface OrderItem {
   lastError: string | null;
 }
 
+// Steam session status, if this bot has steam-auth.cjs's auto-renew wired up
+// (Steam Skins / MAIN STEAM SKINS as of when this was built). Null entries
+// mean "unknown" (e.g. auto-renew not configured yet), not "expired".
+export interface SessionStatus {
+  autoRenewOn: boolean;
+  accessTokenExpiresAt: number | null;
+  refreshTokenExpiresAt: number | null;
+}
+
 export interface OrdersState {
   updatedAt: number;
   accountBlocked: string | null; // the circuit-breaker reason, or null if healthy
   orders: OrderItem[];
+  session: SessionStatus | null;
 }
 
 // Commands the dashboard enqueues; the bot's sync script drains and applies
@@ -61,4 +89,5 @@ export type Command =
   | { id: string; type: 'update-watch'; payload: { id: string; maxFloat?: number | null; maxPrice?: number; enabled?: boolean } }
   | { id: string; type: 'place-order'; payload: { orderId: string; targetCents: number; raiseCeiling?: boolean } }
   | { id: string; type: 'cancel-order'; payload: { orderId: string } }
-  | { id: string; type: 'update-order-ceiling'; payload: { orderId: string; maxCents: number } };
+  | { id: string; type: 'update-order-ceiling'; payload: { orderId: string; maxCents: number } }
+  | { id: string; type: 'refresh-session'; payload: Record<string, never> };

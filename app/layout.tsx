@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Fira_Sans, Fira_Code } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
 
-// A technical, slightly condensed pairing rather than the Geist default —
-// fits a data-dense control panel (prices, floats, hash names) better than a
-// generic sans, and doesn't blur into every other AI-scaffolded dashboard.
-const plexSans = IBM_Plex_Sans({
-  variable: "--font-plex-sans",
+// Recommended by ui-ux-pro-max's design-system generator for this product
+// type ("dashboard, data, analytics, code, technical, precise") — a more
+// deliberate pairing than the create-next-app default, and it's genuinely
+// domain-appropriate: this whole app is prices, floats, and hash names.
+const firaSans = Fira_Sans({
+  variable: "--font-fira-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const plexMono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
+const firaCode = Fira_Code({
+  variable: "--font-fira-code",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -27,9 +28,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${firaSans.variable} ${firaCode.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-100">
+      <body className="min-h-full flex flex-col bg-background text-foreground">
         <NavBar />
         <main className="flex-1">{children}</main>
       </body>

@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { botByKey } from '@/lib/bots';
 import { getWatchlistState, enqueueCommand, makeCommand } from '@/lib/store';
+import { withApiErrors } from '@/lib/api-handler';
 
-export async function GET(req: NextRequest) {
+export const GET = withApiErrors(async (req: NextRequest) => {
   const bot = req.nextUrl.searchParams.get('bot');
   if (!bot || botByKey(bot)?.kind !== 'watchlist') {
     return NextResponse.json({ error: 'unknown watchlist bot' }, { status: 400 });
   }
   const state = await getWatchlistState(bot);
   return NextResponse.json(state ?? { updatedAt: 0, watches: [], matches: [] });
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withApiErrors(async (req: NextRequest) => {
   const body = await req.json();
   const { bot, watch } = body;
   if (!bot || botByKey(bot)?.kind !== 'watchlist') {
@@ -31,9 +32,9 @@ export async function POST(req: NextRequest) {
     id: watch.id,
   }));
   return NextResponse.json({ ok: true, queued: true });
-}
+});
 
-export async function DELETE(req: NextRequest) {
+export const DELETE = withApiErrors(async (req: NextRequest) => {
   const bot = req.nextUrl.searchParams.get('bot');
   const id = req.nextUrl.searchParams.get('id');
   if (!bot || botByKey(bot)?.kind !== 'watchlist' || !id) {
@@ -41,9 +42,9 @@ export async function DELETE(req: NextRequest) {
   }
   await enqueueCommand(bot, makeCommand('remove-watch', { id }));
   return NextResponse.json({ ok: true, queued: true });
-}
+});
 
-export async function PATCH(req: NextRequest) {
+export const PATCH = withApiErrors(async (req: NextRequest) => {
   const body = await req.json();
   const { bot, id, maxFloat, maxPrice, enabled } = body;
   if (!bot || botByKey(bot)?.kind !== 'watchlist' || !id) {
@@ -56,4 +57,4 @@ export async function PATCH(req: NextRequest) {
     ...(enabled !== undefined ? { enabled: !!enabled } : {}),
   }));
   return NextResponse.json({ ok: true, queued: true });
-}
+});

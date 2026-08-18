@@ -1,10 +1,16 @@
 import type { WatchlistState, OrdersState, WatchItem } from './types';
 
+// Thrown when the API reports Redis isn't wired up yet, so the UI can show a
+// calm "finish setup" state instead of a scary generic error.
+export class NotConfiguredError extends Error {}
+
 async function jsonFetch<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts?.headers || {}) } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `${res.status} ${res.statusText}`);
+    const message = body.error || `${res.status} ${res.statusText}`;
+    if (body.code === 'redis_not_configured') throw new NotConfiguredError(message);
+    throw new Error(message);
   }
   return res.json();
 }
@@ -23,4 +29,6 @@ export const api = {
     jsonFetch(`/api/orders/place`, { method: 'POST', body: JSON.stringify({ bot, orderId, targetCents, raiseCeiling }) }),
   cancelOrder: (bot: string, orderId: string) =>
     jsonFetch(`/api/orders/cancel`, { method: 'POST', body: JSON.stringify({ bot, orderId }) }),
+  refreshSession: (bot: string) =>
+    jsonFetch(`/api/orders/refresh-session`, { method: 'POST', body: JSON.stringify({ bot }) }),
 };

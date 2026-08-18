@@ -1,17 +1,18 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { BOTS, ACCOUNTS, botByKey } from '@/lib/bots';
-import { api } from '@/lib/api-client';
+import { BOTS, ACCOUNTS } from '@/lib/bots';
+import { api, NotConfiguredError } from '@/lib/api-client';
+import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import type { WatchMatch, WatchItem } from '@/lib/types';
+import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 
 interface Row {
   bot: string;
-  botLabel: string;
   account: string;
   watch: WatchItem;
-  match: WatchMatch | null;
+  match: WatchMatch;
   steamPct: number | null;
   thirdPct: number | null;
 }
@@ -23,6 +24,8 @@ function pct(price: number | null | undefined, ref: number | null | undefined) {
 
 export default function BestDealsPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState('');
   const [account, setAccount] = useState<string>('All');
   const [maxFloat, setMaxFloat] = useState('');
@@ -35,28 +38,33 @@ export default function BestDealsPage() {
         const results = await Promise.all(WATCHLIST_BOTS.map((b) => api.getWatchlist(b.key)));
         if (cancelled) return;
         const next: Row[] = [];
+        let hidden = 0;
         results.forEach((state, i) => {
           const bot = WATCHLIST_BOTS[i];
           const matchByWatch = new Map(state.matches.map((m) => [m.watchId, m]));
           for (const watch of state.watches) {
             if (!watch.enabled) continue;
-            const match = matchByWatch.get(watch.id) ?? null;
+            const match = matchByWatch.get(watch.id);
+            if (!match) { hidden++; continue; }
             next.push({
               bot: bot.key,
-              botLabel: bot.label,
               account: bot.account,
               watch,
               match,
-              steamPct: match ? pct(match.price, match.steamPrice) : null,
-              thirdPct: match ? pct(match.price, match.thirdLowPrice) : null,
+              steamPct: pct(match.price, match.steamPrice),
+              thirdPct: pct(match.price, match.thirdLowPrice),
             });
           }
         });
-        // Cheapest-relative-to-Steam first — that's "best" for this list.
         next.sort((a, b) => (a.steamPct ?? 999) - (b.steamPct ?? 999));
         setRows(next);
+        setHiddenCount(hidden);
+        setNotConfigured(false);
+        setError('');
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (cancelled) return;
+        if (e instanceof NotConfiguredError) setNotConfigured(true);
+        else setError(e instanceof Error ? e.message : String(e));
       }
     }
     load();
@@ -68,27 +76,27 @@ export default function BestDealsPage() {
     if (!rows) return [];
     return rows.filter((r) => {
       if (account !== 'All' && r.account !== account) return false;
-      if (maxFloat && r.match?.float != null && r.match.float > Number(maxFloat)) return false;
+      if (maxFloat && r.match.float != null && r.match.float > Number(maxFloat)) return false;
       if (maxSteamPct && r.steamPct != null && r.steamPct > Number(maxSteamPct)) return false;
       return true;
     });
   }, [rows, account, maxFloat, maxSteamPct]);
 
-  const withMatch = filtered.filter((r) => r.match);
-  const withoutMatch = filtered.filter((r) => !r.match);
+  const filtersActive = !!(maxFloat || maxSteamPct || account !== 'All');
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-xl font-semibold">Best deals right now</h1>
-      <p className="mt-1 text-sm text-neutral-400">
-        Live matches from your last sweep, sorted by cheapest vs. Steam. Updates every 30s.
+      <h1 className="text-xl font-semibold tracking-tight">Best deals right now</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Live matches from your last sweep, sorted cheapest vs. Steam. Refreshes every 30s.
       </p>
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-2.5">
+        <FunnelIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <select
           value={account}
           onChange={(e) => setAccount(e.target.value)}
-          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
+          className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
         >
           <option>All</option>
           {ACCOUNTS.map((a) => <option key={a}>{a}</option>)}
@@ -97,31 +105,39 @@ export default function BestDealsPage() {
           value={maxFloat}
           onChange={(e) => setMaxFloat(e.target.value)}
           placeholder="max float"
-          className="w-28 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-600"
+          inputMode="decimal"
+          className="w-28 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring"
         />
         <input
           value={maxSteamPct}
           onChange={(e) => setMaxSteamPct(e.target.value)}
           placeholder="max steam %"
-          className="w-32 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm placeholder:text-neutral-600"
+          inputMode="decimal"
+          className="w-32 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring"
         />
-        {(maxFloat || maxSteamPct || account !== 'All') && (
+        {filtersActive && (
           <button
             onClick={() => { setAccount('All'); setMaxFloat(''); setMaxSteamPct(''); }}
-            className="text-sm text-neutral-500 hover:text-neutral-200"
+            className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Clear filters
+            <XMarkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            Clear
           </button>
         )}
       </div>
 
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
-      {!rows && !error && <p className="mt-8 text-sm text-neutral-500">Loading…</p>}
+      {notConfigured && <div className="mt-5"><SetupBanner /></div>}
+      {error && <div className="mt-5"><ErrorBanner message={error} /></div>}
+      {!rows && !notConfigured && !error && (
+        <div className="mt-8 space-y-2">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-surface" />)}
+        </div>
+      )}
 
       {rows && (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-800">
+        <div className="mt-6 overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-neutral-900 text-left text-neutral-400">
+            <thead className="bg-surface text-left text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Skin</th>
                 <th className="px-3 py-2 font-medium">Account</th>
@@ -134,24 +150,29 @@ export default function BestDealsPage() {
               </tr>
             </thead>
             <tbody>
-              {withMatch.map((r) => (
-                <tr key={`${r.bot}:${r.watch.id}`} className="border-t border-neutral-800 hover:bg-neutral-900/50">
+              {filtered.map((r) => (
+                <tr key={`${r.bot}:${r.watch.id}`} className="border-t border-border transition-colors hover:bg-surface/60">
                   <td className="px-3 py-2">
-                    {r.watch.name} <span className="text-neutral-500">({r.watch.exterior})</span>
-                    {r.watch.stattrak && <span className="ml-1 rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">ST</span>}
+                    {r.watch.name} <span className="text-muted-foreground">({r.watch.exterior})</span>
+                    {r.watch.stattrak && <span className="ml-1.5 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>}
                   </td>
-                  <td className="px-3 py-2 text-neutral-400">{r.account}</td>
-                  <td className="px-3 py-2 text-neutral-400">{r.match!.site}</td>
-                  <td className="px-3 py-2 font-mono font-medium">${r.match!.price.toFixed(2)}</td>
-                  <td className="px-3 py-2 font-mono text-neutral-400">{r.match!.float != null ? r.match!.float.toFixed(4) : '—'}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.account}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.match.site}</td>
+                  <td className="px-3 py-2 font-mono font-medium">${r.match.price.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-muted-foreground">{r.match.float != null ? r.match.float.toFixed(4) : '—'}</td>
                   <td className="px-3 py-2 font-mono">
-                    {r.steamPct != null ? <span className={r.steamPct < 75 ? 'text-emerald-400' : ''}>{r.steamPct}%</span> : '—'}
+                    {r.steamPct != null ? <span className={r.steamPct < 75 ? 'text-success' : ''}>{r.steamPct}%</span> : '—'}
                   </td>
                   <td className="px-3 py-2 font-mono">{r.thirdPct != null ? `${r.thirdPct}%` : '—'}</td>
                   <td className="px-3 py-2">
-                    {r.match!.url && (
-                      <a href={r.match!.url} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-100">
-                        Open ↗
+                    {r.match.url && (
+                      <a
+                        href={r.match.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+                      >
+                        Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
                       </a>
                     )}
                   </td>
@@ -159,15 +180,15 @@ export default function BestDealsPage() {
               ))}
             </tbody>
           </table>
-          {!withMatch.length && (
-            <p className="px-3 py-8 text-center text-sm text-neutral-500">No current matches under these filters.</p>
+          {!filtered.length && (
+            <p className="px-3 py-10 text-center text-sm text-muted-foreground">No current matches under these filters.</p>
           )}
         </div>
       )}
 
-      {rows && withoutMatch.length > 0 && (
-        <p className="mt-4 text-xs text-neutral-600">
-          {withoutMatch.length} enabled watch{withoutMatch.length === 1 ? '' : 'es'} with no current match, hidden from this list.
+      {rows && hiddenCount > 0 && (
+        <p className="mt-4 text-xs text-muted-foreground/70">
+          {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} with no current match, hidden from this list.
         </p>
       )}
     </div>

@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
-/* Dark-primary fintech/dashboard palette (ui-ux-pro-max "Modern Dark" system,
-   re-based onto a dark background — its own generator output leaned light,
-   which its own "avoid" list calls out as the wrong default for this product
-   type, so the hues are kept but background/foreground are inverted). Avoids
-   pure #000 per the effects note (OLED smear / feels dead on screen). */
+/* Near-monochrome dark dashboard: one blue accent doing all the work, a very
+   dark (not pure black) ground, and two elevation steps above it. Pure #000 is
+   avoided deliberately — it smears on OLED and reads as a hole in the page. */
 :root {
-  --background: #0a0e16;
-  --surface: #10141d;
-  --surface-hover: #161c28;
-  --foreground: #e7ecf5;
-  --muted-foreground: #8b97ac;
+  --background: #08090c;
+  --surface: #0e1015;
+  --surface-hover: #15181f;
+  --sidebar: #0b0c10;
+  --foreground: #e8ebf2;
+  --muted-foreground: #8b93a5;
   --primary: #3b82f6;
-  --primary-foreground: #061020;
-  --accent: #f59e0b;
+  --primary-foreground: #06101f;
+  --accent: #f5a524;
   --accent-foreground: #1a1000;
-  --border: #1e2530;
-  --destructive: #ef4444;
-  --success: #34d399;
+  --border: #1b1e26;
+  --border-strong: #262a34;
+  --destructive: #f0616d;
+  --success: #35d39a;
   --success-foreground: #04140d;
-  --warning: #f59e0b;
+  --warning: #f5a524;
   --ring: #3b82f6;
 }
 
@@ -27,6 +27,7 @@
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-hover: var(--surface-hover);
+  --color-sidebar: var(--sidebar);
   --color-foreground: var(--foreground);
   --color-muted-foreground: var(--muted-foreground);
   --color-primary: var(--primary);
@@ -34,6 +35,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
@@ -49,6 +51,24 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Prices, floats and percentages sit in columns, so they need fixed-width
+   digits or the numbers jitter as they refresh every 30s. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 * {
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }

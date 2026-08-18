@@ -3,8 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { BOTS, ACCOUNTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
+import { SkinThumb } from '@/components/SkinThumb';
+import { SiteLogo, SteamMark } from '@/components/SiteLogo';
+import {
+  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, inputClass,
+} from '@/components/ui';
 import type { WatchMatch, WatchItem } from '@/lib/types';
-import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 
@@ -20,6 +25,15 @@ interface Row {
 function pct(price: number | null | undefined, ref: number | null | undefined) {
   if (price == null || ref == null || ref <= 0) return null;
   return Math.round((price / ref) * 100);
+}
+
+// The colour has to mean the same thing everywhere: green = a real discount to
+// Steam, amber = fine but not a steal, plain = at or above Steam.
+function steamTone(p: number | null) {
+  if (p == null) return 'muted' as const;
+  if (p < 75) return 'success' as const;
+  if (p < 95) return 'warning' as const;
+  return 'muted' as const;
 }
 
 export default function BestDealsPage() {
@@ -82,39 +96,50 @@ export default function BestDealsPage() {
     });
   }, [rows, account, maxFloat, maxSteamPct]);
 
+  const stats = useMemo(() => {
+    const withPct = filtered.filter((r) => r.steamPct != null);
+    const best = withPct.length ? Math.min(...withPct.map((r) => r.steamPct!)) : null;
+    const under75 = withPct.filter((r) => r.steamPct! < 75).length;
+    const value = filtered.reduce((s, r) => s + r.match.price, 0);
+    return { best, under75, value, total: filtered.length };
+  }, [filtered]);
+
   const filtersActive = !!(maxFloat || maxSteamPct || account !== 'All');
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-xl font-semibold tracking-tight">Best deals right now</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Live matches from your last sweep, sorted cheapest vs. Steam. Refreshes every 30s.
-      </p>
+    <Page>
+      <PageHead
+        title="Best deals"
+        count={rows ? filtered.length : undefined}
+        subtitle="Live matches from each bot's last sweep, cheapest against Steam first. Refreshes every 30 seconds."
+      />
 
-      <div className="mt-5 flex flex-wrap items-center gap-2.5">
+      {notConfigured && <div className="mt-6"><SetupBanner /></div>}
+      {error && <div className="mt-6"><ErrorBanner message={error} /></div>}
+
+      {rows && (
+        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="Live matches" value={stats.total} icon={<SparklesIcon className="h-3.5 w-3.5" aria-hidden="true" />} />
+          <StatCard
+            label="Best vs Steam"
+            value={stats.best != null ? `${stats.best}%` : '—'}
+            tone={stats.best != null && stats.best < 75 ? 'success' : 'default'}
+            icon={<SteamMark className="h-3.5 w-3.5" />}
+            hint="lower is a better deal"
+          />
+          <StatCard label="Under 75% of Steam" value={stats.under75} tone="success" icon={<TagIcon className="h-3.5 w-3.5" aria-hidden="true" />} />
+          <StatCard label="Combined ask" value={`$${stats.value.toFixed(2)}`} hint="if you bought every row" />
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-wrap items-center gap-2.5">
         <FunnelIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <select
-          value={account}
-          onChange={(e) => setAccount(e.target.value)}
-          className="cursor-pointer rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
-        >
+        <select value={account} onChange={(e) => setAccount(e.target.value)} className={`${inputClass} cursor-pointer`}>
           <option>All</option>
           {ACCOUNTS.map((a) => <option key={a}>{a}</option>)}
         </select>
-        <input
-          value={maxFloat}
-          onChange={(e) => setMaxFloat(e.target.value)}
-          placeholder="max float"
-          inputMode="decimal"
-          className="w-28 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring"
-        />
-        <input
-          value={maxSteamPct}
-          onChange={(e) => setMaxSteamPct(e.target.value)}
-          placeholder="max steam %"
-          inputMode="decimal"
-          className="w-32 rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-sm text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-ring focus:ring-1 focus:ring-ring"
-        />
+        <input value={maxFloat} onChange={(e) => setMaxFloat(e.target.value)} placeholder="max float" inputMode="decimal" className={`${inputClass} w-32 tabular`} />
+        <input value={maxSteamPct} onChange={(e) => setMaxSteamPct(e.target.value)} placeholder="max steam %" inputMode="decimal" className={`${inputClass} w-36 tabular`} />
         {filtersActive && (
           <button
             onClick={() => { setAccount('All'); setMaxFloat(''); setMaxSteamPct(''); }}
@@ -126,71 +151,83 @@ export default function BestDealsPage() {
         )}
       </div>
 
-      {notConfigured && <div className="mt-5"><SetupBanner /></div>}
-      {error && <div className="mt-5"><ErrorBanner message={error} /></div>}
-      {!rows && !notConfigured && !error && (
-        <div className="mt-8 space-y-2">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-surface" />)}
-        </div>
-      )}
+      {!rows && !notConfigured && !error && <div className="mt-6"><Skeleton /></div>}
 
       {rows && (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Skin</th>
-                <th className="px-3 py-2 font-medium">Account</th>
-                <th className="px-3 py-2 font-medium">Site</th>
-                <th className="px-3 py-2 font-medium">Price</th>
-                <th className="px-3 py-2 font-medium">Float</th>
-                <th className="px-3 py-2 font-medium">vs Steam</th>
-                <th className="px-3 py-2 font-medium">vs 3rd party</th>
-                <th className="px-3 py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={`${r.bot}:${r.watch.id}`} className="border-t border-border transition-colors hover:bg-surface/60">
-                  <td className="px-3 py-2">
-                    {r.watch.name} <span className="text-muted-foreground">({r.watch.exterior})</span>
-                    {r.watch.stattrak && <span className="ml-1.5 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.account}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.match.site}</td>
-                  <td className="px-3 py-2 font-mono font-medium">${r.match.price.toFixed(2)}</td>
-                  <td className="px-3 py-2 font-mono text-muted-foreground">{r.match.float != null ? r.match.float.toFixed(4) : '—'}</td>
-                  <td className="px-3 py-2 font-mono">
-                    {r.steamPct != null ? <span className={r.steamPct < 75 ? 'text-success' : ''}>{r.steamPct}%</span> : '—'}
-                  </td>
-                  <td className="px-3 py-2 font-mono">{r.thirdPct != null ? `${r.thirdPct}%` : '—'}</td>
-                  <td className="px-3 py-2">
-                    {r.match.url && (
-                      <a
-                        href={r.match.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
-                      >
-                        Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                      </a>
-                    )}
-                  </td>
+        <div className="mt-4">
+          <TableWrap>
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-surface/60">
+                <tr>
+                  <Th>Skin</Th>
+                  <Th>Account</Th>
+                  <Th>Market</Th>
+                  <Th right>Price</Th>
+                  <Th right>Float</Th>
+                  <Th right>vs Steam</Th>
+                  <Th right>vs 3rd party</Th>
+                  <Th right />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!filtered.length && (
-            <p className="px-3 py-10 text-center text-sm text-muted-foreground">No current matches under these filters.</p>
-          )}
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={`${r.bot}:${r.watch.id}`} className="border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/50">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <SkinThumb image={r.watch.image} name={r.watch.name} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-medium">{r.watch.name}</span>
+                            {r.watch.stattrak && (
+                              <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{r.watch.exterior}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.account}</td>
+                    <td className="px-4 py-2.5"><SiteLogo site={r.match.site} /></td>
+                    <td className="px-4 py-2.5 text-right font-medium tabular">${r.match.price.toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
+                      {r.match.float != null ? r.match.float.toFixed(4) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {r.steamPct != null ? <Pill tone={steamTone(r.steamPct)}>{r.steamPct}%</Pill> : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
+                      {r.thirdPct != null ? `${r.thirdPct}%` : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {r.match.url && (
+                        <a
+                          href={r.match.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground transition-colors hover:text-primary"
+                        >
+                          Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!filtered.length && (
+              <Empty icon={<SparklesIcon className="h-7 w-7 text-muted-foreground/40" aria-hidden="true" />}>
+                No current matches under these filters.
+              </Empty>
+            )}
+          </TableWrap>
         </div>
       )}
 
       {rows && hiddenCount > 0 && (
-        <p className="mt-4 text-xs text-muted-foreground/70">
-          {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} with no current match, hidden from this list.
+        <p className="mt-3 text-xs text-muted-foreground/60">
+          {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} had no match in the last sweep and {hiddenCount === 1 ? 'is' : 'are'} hidden here.
         </p>
       )}
-    </div>
+    </Page>
   );
 }

@@ -11,6 +11,8 @@ export interface WatchItem {
   maxFloat: number | null;
   maxPrice: number;
   sites: string[];
+  // Added by the API layer from the local artwork snapshot, never by the bots.
+  image?: string | null;
 }
 
 // One current best-known listing for a watch, as of the bot's last sweep.
@@ -41,6 +43,7 @@ export interface Purchase {
   steamPct: number | null;
   thirdPct: number | null;
   at: number; // epoch ms
+  image?: string | null; // added by the API layer, see WatchItem.image
 }
 
 export interface WatchlistState {
@@ -62,6 +65,7 @@ export interface OrderItem {
   lowestSellCents: number | null;
   quantity: number;
   lastError: string | null;
+  image?: string | null; // added by the API layer, see WatchItem.image
 }
 
 // Steam session status, if this bot has steam-auth.cjs's auto-renew wired up

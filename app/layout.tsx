@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Fira_Sans, Fira_Code } from "next/font/google";
 import "./globals.css";
-import { NavBar } from "@/components/NavBar";
+import { AppShell } from "@/components/AppShell";
 
 // Recommended by ui-ux-pro-max's design-system generator for this product
 // type ("dashboard, data, analytics, code, technical, precise") — a more
@@ -30,9 +30,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${firaSans.variable} ${firaCode.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
-        <NavBar />
-        <main className="flex-1">{children}</main>
+      <body className="min-h-full bg-background text-foreground">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

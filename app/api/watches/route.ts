@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { botByKey } from '@/lib/bots';
 import { getWatchlistState, enqueueCommand, makeCommand } from '@/lib/store';
 import { withApiErrors } from '@/lib/api-handler';
+import { skinImage } from '@/lib/skin-images';
 
 export const GET = withApiErrors(async (req: NextRequest) => {
   const bot = req.nextUrl.searchParams.get('bot');
@@ -9,7 +10,15 @@ export const GET = withApiErrors(async (req: NextRequest) => {
     return NextResponse.json({ error: 'unknown watchlist bot' }, { status: 400 });
   }
   const state = await getWatchlistState(bot);
-  return NextResponse.json(state ?? { updatedAt: 0, watches: [], matches: [] });
+  if (!state) return NextResponse.json({ updatedAt: 0, watches: [], matches: [], purchases: [] });
+
+  // Artwork is attached here rather than pushed by the bots: it's presentation,
+  // and keeping it out of Redis means the bots stay unaware of it entirely.
+  return NextResponse.json({
+    ...state,
+    watches: (state.watches ?? []).map((w) => ({ ...w, image: skinImage(w.name) })),
+    purchases: (state.purchases ?? []).map((p) => ({ ...p, image: skinImage(p.name) })),
+  });
 });
 
 export const POST = withApiErrors(async (req: NextRequest) => {

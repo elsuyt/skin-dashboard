@@ -3,8 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { BOTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
+import { SkinThumb } from '@/components/SkinThumb';
+import { SiteLogo } from '@/components/SiteLogo';
+import {
+  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill,
+} from '@/components/ui';
 import type { Purchase } from '@/lib/types';
-import { ShoppingBagIcon, BoltIcon, CursorArrowRaysIcon } from '@heroicons/react/24/outline';
+import { ShoppingBagIcon, BoltIcon, CursorArrowRaysIcon, BanknotesIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 
@@ -15,6 +20,24 @@ interface Row extends Purchase {
 
 function money(n: number) {
   return `$${n.toFixed(2)}`;
+}
+
+// The bots record the full market hash name ("StatTrak™ AK-47 | Redline
+// (Field-Tested)"), which already carries the exterior — printing that next to
+// the separate exterior field showed it twice. Split it so the row reads as
+// name + exterior, and fall back to the recorded field for older records whose
+// name had no suffix.
+const EXTERIOR_RE = /\s*\((Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)\)\s*$/i;
+const QUALIFIER_RE = /^(★\s*)?(StatTrak™|StatTrak|Souvenir)\s*/i;
+
+function splitName(name: string, recordedExterior: string) {
+  const m = name.match(EXTERIOR_RE);
+  const base = m ? name.slice(0, m.index).trim() : name.trim();
+  return {
+    base: base.replace(QUALIFIER_RE, '').trim() || base,
+    exterior: (m ? m[1] : recordedExterior) || '',
+    stattrak: /^(★\s*)?(StatTrak™|StatTrak)\s/i.test(base),
+  };
 }
 
 export default function PurchasesPage() {
@@ -56,50 +79,43 @@ export default function PurchasesPage() {
     return via === 'all' ? rows : rows.filter((r) => r.via === via);
   }, [rows, via]);
 
-  const totals = useMemo(() => {
+  const stats = useMemo(() => {
     const spent = filtered.reduce((s, r) => s + r.price, 0);
     const auto = filtered.filter((r) => r.via === 'auto').length;
-    return { spent, auto, manual: filtered.length - auto, count: filtered.length };
+    const day = Date.now() - 86_400_000;
+    const spent24h = filtered.filter((r) => r.at >= day).reduce((s, r) => s + r.price, 0);
+    return { spent, auto, manual: filtered.length - auto, count: filtered.length, spent24h };
   }, [filtered]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-xl font-semibold tracking-tight">Purchases</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Everything actually bought across skin-sniper and account #3 — auto-buys and manual confirms, newest first.
-      </p>
+    <Page>
+      <PageHead
+        title="Purchases"
+        count={rows ? filtered.length : undefined}
+        subtitle="Everything actually bought across both sniper bots — auto-buys and manual confirms, newest first."
+      />
 
-      {notConfigured && <div className="mt-5"><SetupBanner /></div>}
-      {error && <div className="mt-5"><ErrorBanner message={error} /></div>}
+      {notConfigured && <div className="mt-6"><SetupBanner /></div>}
+      {error && <div className="mt-6"><ErrorBanner message={error} /></div>}
 
       {rows && (
         <>
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">
-              <p className="text-xs text-muted-foreground">Total spent</p>
-              <p className="mt-1 font-mono text-lg font-semibold">{money(totals.spent)}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">
-              <p className="text-xs text-muted-foreground">Purchases</p>
-              <p className="mt-1 font-mono text-lg font-semibold">{totals.count}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">
-              <p className="flex items-center gap-1 text-xs text-muted-foreground"><BoltIcon className="h-3.5 w-3.5" aria-hidden="true" /> Auto-bought</p>
-              <p className="mt-1 font-mono text-lg font-semibold text-accent">{totals.auto}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-surface/60 px-4 py-3">
-              <p className="flex items-center gap-1 text-xs text-muted-foreground"><CursorArrowRaysIcon className="h-3.5 w-3.5" aria-hidden="true" /> Manual</p>
-              <p className="mt-1 font-mono text-lg font-semibold">{totals.manual}</p>
-            </div>
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Total spent" value={money(stats.spent)} icon={<BanknotesIcon className="h-3.5 w-3.5" aria-hidden="true" />} />
+            <StatCard label="Spent last 24h" value={money(stats.spent24h)} hint="across both bots" />
+            <StatCard label="Auto-bought" value={stats.auto} tone="accent" icon={<BoltIcon className="h-3.5 w-3.5" aria-hidden="true" />} hint="no confirmation tap" />
+            <StatCard label="Manual" value={stats.manual} icon={<CursorArrowRaysIcon className="h-3.5 w-3.5" aria-hidden="true" />} hint="you confirmed these" />
           </div>
 
-          <div className="mt-5 flex gap-2">
+          <div className="mt-6 flex gap-2">
             {(['all', 'auto', 'manual'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setVia(v)}
-                className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
-                  via === v ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground hover:bg-surface hover:text-foreground'
+                className={`cursor-pointer rounded-lg px-3.5 py-2 text-sm font-medium capitalize transition-colors ${
+                  via === v
+                    ? 'bg-surface-hover text-foreground ring-1 ring-border-strong'
+                    : 'text-muted-foreground hover:bg-surface hover:text-foreground'
                 }`}
               >
                 {v}
@@ -109,60 +125,68 @@ export default function PurchasesPage() {
         </>
       )}
 
-      {!rows && !notConfigured && !error && (
-        <div className="mt-8 space-y-2">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-surface" />)}
-        </div>
-      )}
+      {!rows && !notConfigured && !error && <div className="mt-6"><Skeleton /></div>}
 
       {rows && (
-        <div className="mt-5 overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Skin</th>
-                <th className="px-3 py-2 font-medium">Account</th>
-                <th className="px-3 py-2 font-medium">Site</th>
-                <th className="px-3 py-2 font-medium">Price</th>
-                <th className="px-3 py-2 font-medium">Float</th>
-                <th className="px-3 py-2 font-medium">Via</th>
-                <th className="px-3 py-2 font-medium">When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={`${r.bot}:${r.id}`} className="border-t border-border transition-colors hover:bg-surface/60">
-                  <td className="px-3 py-2">
-                    {r.name} {r.exterior && <span className="text-muted-foreground">({r.exterior})</span>}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.account}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{r.site}</td>
-                  <td className="px-3 py-2 font-mono font-medium">{money(r.price)}</td>
-                  <td className="px-3 py-2 font-mono text-muted-foreground">{r.float != null ? r.float.toFixed(4) : '—'}</td>
-                  <td className="px-3 py-2">
-                    {r.via === 'auto' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-xs font-medium text-accent">
-                        <BoltIcon className="h-3 w-3" aria-hidden="true" /> auto{r.steamPct != null ? ` · ${r.steamPct}%` : ''}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                        <CursorArrowRaysIcon className="h-3 w-3" aria-hidden="true" /> manual
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{new Date(r.at).toLocaleString()}</td>
+        <div className="mt-4">
+          <TableWrap>
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-surface/60">
+                <tr>
+                  <Th>Skin</Th>
+                  <Th>Account</Th>
+                  <Th>Market</Th>
+                  <Th right>Paid</Th>
+                  <Th right>Float</Th>
+                  <Th>How</Th>
+                  <Th right>When</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!filtered.length && (
-            <div className="flex flex-col items-center gap-2 px-3 py-14 text-center text-sm text-muted-foreground">
-              <ShoppingBagIcon className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
-              Nothing bought yet under this filter.
-            </div>
-          )}
+              </thead>
+              <tbody>
+                {filtered.map((r) => (
+                  <tr key={`${r.bot}:${r.id}`} className="border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/50">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <SkinThumb image={r.image} name={r.name} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-medium">{splitName(r.name, r.exterior).base}</span>
+                            {splitName(r.name, r.exterior).stattrak && (
+                              <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>
+                            )}
+                          </div>
+                          {splitName(r.name, r.exterior).exterior && (
+                            <p className="text-xs text-muted-foreground">{splitName(r.name, r.exterior).exterior}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.account}</td>
+                    <td className="px-4 py-2.5"><SiteLogo site={r.site} /></td>
+                    <td className="px-4 py-2.5 text-right font-medium tabular">{money(r.price)}</td>
+                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular">{r.float != null ? r.float.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-2.5">
+                      {r.via === 'auto' ? (
+                        <Pill tone="accent">auto{r.steamPct != null ? ` · ${r.steamPct}% steam` : ''}</Pill>
+                      ) : (
+                        <Pill tone="muted">manual</Pill>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-muted-foreground">
+                      {new Date(r.at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!filtered.length && (
+              <Empty icon={<ShoppingBagIcon className="h-7 w-7 text-muted-foreground/40" aria-hidden="true" />}>
+                Nothing bought yet under this filter. New buys appear here within a minute.
+              </Empty>
+            )}
+          </TableWrap>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

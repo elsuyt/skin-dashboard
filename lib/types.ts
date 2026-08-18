@@ -26,6 +26,10 @@ export interface WatchMatch {
   thirdLowPrice: number | null;
   url: string | null;
   seenAt: number; // epoch ms
+  // True when the bot is still holding enough of this listing to stage it —
+  // a confirmed match carrying a buyRef. False means "Add to cart" would
+  // find nothing, so the button is not offered.
+  cartable?: boolean;
 }
 
 // One completed purchase, either auto-buy or a manual confirm. `via`
@@ -46,11 +50,38 @@ export interface Purchase {
   image?: string | null; // added by the API layer, see WatchItem.image
 }
 
+// One listing staged in the bot's local cart. Staging spends nothing; only
+// checkout does. `canBuy` is evaluated bot-side per adapter (LIS-Skins needs a
+// Steam trade link configured), so a false here means checkout will hand the
+// item back as a link rather than buy it.
+export interface CartItem {
+  key: string;
+  site: string;
+  watchId: string | null;
+  name: string;
+  price: number;
+  float: number | null;
+  url: string | null;
+  canBuy: boolean;
+  addedAt: number;
+  image?: string | null; // added by the API layer, see WatchItem.image
+}
+
+// The bot's live buy configuration, so the dashboard shows the real ceiling
+// rather than repeating a number that might have drifted out of .env.
+export interface BuyingConfig {
+  enabled: boolean;      // ENABLE_BUY
+  maxBuyUsd: number;     // MAX_BUY_USD, per item
+  buyableSites: string[]; // adapters that can actually be purchased from
+}
+
 export interface WatchlistState {
   updatedAt: number;
   watches: WatchItem[];
   matches: WatchMatch[]; // most recent match per watch, from the bot's last sweep
   purchases: Purchase[]; // most recent purchases, newest first
+  cart: CartItem[];
+  buying: BuyingConfig | null;
 }
 
 export type OrderStatus = 'top' | 'outbid' | 'ceiling' | 'pending' | 'error';
@@ -94,4 +125,8 @@ export type Command =
   | { id: string; type: 'place-order'; payload: { orderId: string; targetCents: number; raiseCeiling?: boolean } }
   | { id: string; type: 'cancel-order'; payload: { orderId: string } }
   | { id: string; type: 'update-order-ceiling'; payload: { orderId: string; maxCents: number } }
-  | { id: string; type: 'refresh-session'; payload: Record<string, never> };
+  | { id: string; type: 'refresh-session'; payload: Record<string, never> }
+  | { id: string; type: 'cart-add'; payload: { watchId: string } }
+  | { id: string; type: 'cart-remove'; payload: { key: string } }
+  | { id: string; type: 'cart-clear'; payload: Record<string, never> }
+  | { id: string; type: 'cart-checkout'; payload: Record<string, never> };

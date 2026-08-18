@@ -10,7 +10,9 @@ export const GET = withApiErrors(async (req: NextRequest) => {
     return NextResponse.json({ error: 'unknown watchlist bot' }, { status: 400 });
   }
   const state = await getWatchlistState(bot);
-  if (!state) return NextResponse.json({ updatedAt: 0, watches: [], matches: [], purchases: [] });
+  if (!state) {
+    return NextResponse.json({ updatedAt: 0, watches: [], matches: [], purchases: [], cart: [], buying: null });
+  }
 
   // Artwork is attached here rather than pushed by the bots: it's presentation,
   // and keeping it out of Redis means the bots stay unaware of it entirely.
@@ -18,6 +20,7 @@ export const GET = withApiErrors(async (req: NextRequest) => {
     ...state,
     watches: (state.watches ?? []).map((w) => ({ ...w, image: skinImage(w.name) })),
     purchases: (state.purchases ?? []).map((p) => ({ ...p, image: skinImage(p.name) })),
+    cart: (state.cart ?? []).map((c) => ({ ...c, image: skinImage(c.name) })),
   });
 });
 

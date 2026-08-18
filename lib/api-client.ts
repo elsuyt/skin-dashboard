@@ -29,6 +29,15 @@ export const api = {
     jsonFetch(`/api/orders/place`, { method: 'POST', body: JSON.stringify({ bot, orderId, targetCents, raiseCeiling }) }),
   cancelOrder: (bot: string, orderId: string) =>
     jsonFetch(`/api/orders/cancel`, { method: 'POST', body: JSON.stringify({ bot, orderId }) }),
+  addToCart: (bot: string, watchId: string) =>
+    jsonFetch(`/api/cart`, { method: 'POST', body: JSON.stringify({ bot, action: 'add', watchId }) }),
+  removeFromCart: (bot: string, key: string) =>
+    jsonFetch(`/api/cart?bot=${encodeURIComponent(bot)}&key=${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  clearCart: (bot: string) =>
+    jsonFetch(`/api/cart?bot=${encodeURIComponent(bot)}`, { method: 'DELETE' }),
+  checkout: (bot: string) =>
+    jsonFetch(`/api/cart`, { method: 'POST', body: JSON.stringify({ bot, action: 'checkout' }) }),
+
   refreshSession: (bot: string) =>
     jsonFetch(`/api/orders/refresh-session`, { method: 'POST', body: JSON.stringify({ bot }) }),
 };

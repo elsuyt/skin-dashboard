@@ -9,7 +9,7 @@ import {
   Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, inputClass,
 } from '@/components/ui';
 import type { WatchMatch, WatchItem } from '@/lib/types';
-import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon, ShoppingCartIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 
@@ -20,6 +20,11 @@ interface Row {
   match: WatchMatch;
   steamPct: number | null;
   thirdPct: number | null;
+  // Staging is only offered when the bot still holds a buyable listing for
+  // this watch AND that market can actually be purchased from. Tradeit has
+  // no buy path at all, so it never gets a button.
+  canStage: boolean;
+  inCart: boolean;
 }
 
 function pct(price: number | null | undefined, ref: number | null | undefined) {
@@ -44,6 +49,23 @@ export default function BestDealsPage() {
   const [account, setAccount] = useState<string>('All');
   const [maxFloat, setMaxFloat] = useState('');
   const [maxSteamPct, setMaxSteamPct] = useState('');
+  // Optimistic: the bot only applies the command on its next sync (~30s), so
+  // without this the button would look like it did nothing for half a minute.
+  const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
+
+  async function addToCart(r: Row) {
+    setJustAdded((prev) => new Set(prev).add(`${r.bot}:${r.watch.id}`));
+    try {
+      await api.addToCart(r.bot, r.watch.id);
+    } catch (e) {
+      setJustAdded((prev) => {
+        const next = new Set(prev);
+        next.delete(`${r.bot}:${r.watch.id}`);
+        return next;
+      });
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +78,8 @@ export default function BestDealsPage() {
         results.forEach((state, i) => {
           const bot = WATCHLIST_BOTS[i];
           const matchByWatch = new Map(state.matches.map((m) => [m.watchId, m]));
+          const buyable = new Set(state.buying?.buyableSites ?? []);
+          const staged = new Set((state.cart ?? []).map((c) => `${c.site}:${c.watchId}`));
           for (const watch of state.watches) {
             if (!watch.enabled) continue;
             const match = matchByWatch.get(watch.id);
@@ -67,6 +91,8 @@ export default function BestDealsPage() {
               match,
               steamPct: pct(match.price, match.steamPrice),
               thirdPct: pct(match.price, match.thirdLowPrice),
+              canStage: !!match.cartable && buyable.has(match.site),
+              inCart: staged.has(`${match.site}:${watch.id}`),
             });
           }
         });
@@ -198,13 +224,28 @@ export default function BestDealsPage() {
                     <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
                       {r.thirdPct != null ? `${r.thirdPct}%` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                      {r.canStage && (
+                        r.inCart || justAdded.has(`${r.bot}:${r.watch.id}`) ? (
+                          <span className="mr-3 inline-flex items-center gap-1 text-xs text-success">
+                            <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> in cart
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => addToCart(r)}
+                            title="Stage this listing on the bot — spends nothing"
+                            className="mr-3 inline-flex cursor-pointer items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+                          >
+                            <ShoppingCartIcon className="h-3.5 w-3.5" aria-hidden="true" /> Add
+                          </button>
+                        )
+                      )}
                       {r.match.url && (
                         <a
                           href={r.match.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground transition-colors hover:text-primary"
+                          className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
                         >
                           Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
                         </a>

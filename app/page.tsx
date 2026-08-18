@@ -142,12 +142,12 @@ export default function BestDealsPage() {
                   </td>
                   <td className="px-3 py-2 text-neutral-400">{r.account}</td>
                   <td className="px-3 py-2 text-neutral-400">{r.match!.site}</td>
-                  <td className="px-3 py-2 font-medium">${r.match!.price.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-neutral-400">{r.match!.float != null ? r.match!.float.toFixed(4) : '—'}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 font-mono font-medium">${r.match!.price.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-neutral-400">{r.match!.float != null ? r.match!.float.toFixed(4) : '—'}</td>
+                  <td className="px-3 py-2 font-mono">
                     {r.steamPct != null ? <span className={r.steamPct < 75 ? 'text-emerald-400' : ''}>{r.steamPct}%</span> : '—'}
                   </td>
-                  <td className="px-3 py-2">{r.thirdPct != null ? `${r.thirdPct}%` : '—'}</td>
+                  <td className="px-3 py-2 font-mono">{r.thirdPct != null ? `${r.thirdPct}%` : '—'}</td>
                   <td className="px-3 py-2">
                     {r.match!.url && (
                       <a href={r.match!.url} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-100">

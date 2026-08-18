@@ -119,10 +119,10 @@ export default function OrdersPage() {
                 <tr key={o.id} className="border-t border-neutral-800 hover:bg-neutral-900/50">
                   <td className="px-3 py-2">{o.hashName}</td>
                   <td className={`px-3 py-2 font-medium ${STATUS_STYLE[o.status] ?? ''}`}>{o.status}</td>
-                  <td className="px-3 py-2">{money(o.myCents)}</td>
-                  <td className="px-3 py-2 text-neutral-400">{money(o.highestCents)}</td>
-                  <td className="px-3 py-2 text-neutral-400">{money(o.lowestSellCents)}</td>
-                  <td className="px-3 py-2 text-neutral-400">{money(o.maxCents)}</td>
+                  <td className="px-3 py-2 font-mono">{money(o.myCents)}</td>
+                  <td className="px-3 py-2 font-mono text-neutral-400">{money(o.highestCents)}</td>
+                  <td className="px-3 py-2 font-mono text-neutral-400">{money(o.lowestSellCents)}</td>
+                  <td className="px-3 py-2 font-mono text-neutral-400">{money(o.maxCents)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {o.status === 'outbid' && o.highestCents != null && (
                       confirmId === o.id ? (

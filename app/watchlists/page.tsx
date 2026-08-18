@@ -182,9 +182,9 @@ export default function WatchlistsPage() {
                       {w.name} <span className="text-neutral-500">({w.exterior})</span>
                       {w.stattrak && <span className="ml-1 rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">ST</span>}
                     </td>
-                    <td className="px-3 py-2">${w.maxPrice.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-neutral-400">{w.maxFloat ?? 'any'}</td>
-                    <td className="px-3 py-2 text-neutral-400">
+                    <td className="px-3 py-2 font-mono">${w.maxPrice.toFixed(2)}</td>
+                    <td className="px-3 py-2 font-mono text-neutral-400">{w.maxFloat ?? 'any'}</td>
+                    <td className="px-3 py-2 font-mono text-neutral-400">
                       {m ? `$${m.price.toFixed(2)} on ${m.site}` : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">

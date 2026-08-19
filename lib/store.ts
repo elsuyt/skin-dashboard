@@ -18,6 +18,23 @@ export async function getOrdersState(bot: string): Promise<OrdersState | null> {
   return (await redis.get<OrdersState>(stateKey(bot))) ?? null;
 }
 
+// A pasted Steam session is NOT put on the command queue.
+//
+// The queue has no expiry: if a bot were offline, a full account credential
+// would sit in Redis indefinitely waiting to be drained. This key carries a
+// short Redis TTL instead, so an unclaimed credential deletes itself even if
+// the bot never comes back. The bot DELs it the moment it applies it.
+const sessionKey = (bot: string) => `session-update:${bot}`;
+const SESSION_TTL_SECONDS = 600; // 10 minutes
+
+export async function putSessionUpdate(
+  bot: string,
+  payload: { cookie: string; sessionid?: string; at: number },
+): Promise<void> {
+  const redis = requireRedis();
+  await redis.set(sessionKey(bot), JSON.stringify(payload), { ex: SESSION_TTL_SECONDS });
+}
+
 export async function enqueueCommand(bot: string, cmd: Command): Promise<void> {
   const redis = requireRedis();
   await redis.rpush(commandsKey(bot), JSON.stringify(cmd));

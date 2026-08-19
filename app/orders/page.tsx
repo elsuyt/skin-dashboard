@@ -5,13 +5,12 @@ import { api, NotConfiguredError } from '@/lib/api-client';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SteamMark } from '@/components/SiteLogo';
+import { SessionPanel } from '@/components/SessionPanel';
 import {
-  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, btnGhost,
+  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill,
 } from '@/components/ui';
 import type { OrderItem, OrderStatus, SessionStatus } from '@/lib/types';
-import {
-  ArrowPathIcon, ShieldExclamationIcon, CheckCircleIcon, ClockIcon, BanknotesIcon,
-} from '@heroicons/react/24/outline';
+import { ShieldExclamationIcon, BanknotesIcon } from '@heroicons/react/24/outline';
 
 const ORDER_BOTS = BOTS.filter((b) => b.kind === 'orders');
 
@@ -46,8 +45,6 @@ export default function OrdersPage() {
   const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshQueued, setRefreshQueued] = useState(false);
 
   async function load() {
     try {
@@ -67,7 +64,6 @@ export default function OrdersPage() {
   useEffect(() => {
     setOrders(null);
     setConfirmId(null);
-    setRefreshQueued(false);
     load();
     const id = setInterval(load, 15000);
     return () => clearInterval(id);
@@ -89,19 +85,6 @@ export default function OrdersPage() {
     setTimeout(load, 4000);
   }
 
-  async function refreshSession() {
-    setRefreshing(true);
-    try {
-      await api.refreshSession(botKey);
-      setRefreshQueued(true);
-      setTimeout(load, 5000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   const accessLeft = session ? timeUntil(session.accessTokenExpiresAt) : null;
   const refreshLeft = session ? timeUntil(session.refreshTokenExpiresAt) : null;
   const live = (orders ?? []).filter((o) => o.myCents != null);
@@ -114,12 +97,6 @@ export default function OrdersPage() {
         title="Buy orders"
         count={orders?.length}
         subtitle="Real Steam wallet money. Placing or cancelling here queues the same action your Telegram buttons trigger — same guards, same confirms."
-        actions={
-          <button onClick={refreshSession} disabled={refreshing || refreshQueued} className={btnGhost}>
-            <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {refreshQueued ? 'Queued' : 'Refresh session'}
-          </button>
-        }
       />
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -169,18 +146,15 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {session && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          {accessLeft === 'expired' ? (
-            <ShieldExclamationIcon className="h-4 w-4 text-destructive" aria-hidden="true" />
-          ) : (
-            <CheckCircleIcon className="h-4 w-4 text-success" aria-hidden="true" />
-          )}
-          <span>steamLoginSecure {accessLeft === 'expired' ? 'expired' : `valid for ${accessLeft}`}</span>
-          <ClockIcon className="h-4 w-4" aria-hidden="true" />
-          <span>refresh token {refreshLeft ?? '—'} left</span>
-          {updatedAt > 0 && <span className="text-muted-foreground/60">· synced {new Date(updatedAt).toLocaleTimeString()}</span>}
-        </div>
+      <SessionPanel
+        botKey={botKey}
+        botLabel={ORDER_BOTS.find((b) => b.key === botKey)?.label ?? botKey}
+        session={session}
+        onApplied={load}
+      />
+
+      {updatedAt > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground/60">bot last synced {new Date(updatedAt).toLocaleTimeString()}</p>
       )}
 
       {!orders && !notConfigured && !error && <div className="mt-6"><Skeleton rows={6} /></div>}

@@ -40,4 +40,11 @@ export const api = {
 
   refreshSession: (bot: string) =>
     jsonFetch(`/api/orders/refresh-session`, { method: 'POST', body: JSON.stringify({ bot }) }),
+  // Returns only non-secret facts (steamId, expiry) — the credential itself is
+  // never echoed back.
+  pushSession: (bot: string, cookie: string, sessionid?: string) =>
+    jsonFetch<{ ok: true; steamId: string; expiresAt: number | null }>(`/api/orders/session`, {
+      method: 'POST',
+      body: JSON.stringify({ bot, cookie, sessionid: sessionid || undefined }),
+    }),
 };

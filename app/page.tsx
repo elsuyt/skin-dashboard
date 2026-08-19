@@ -25,6 +25,23 @@ interface Row {
   // no buy path at all, so it never gets a button.
   canStage: boolean;
   inCart: boolean;
+  stale: boolean;
+  ageMs: number;
+}
+
+// The bot only holds a listing it can still stage for 60 minutes (state.cjs's
+// getMatchListing TTL). Past that the listing is very likely gone from the
+// market, so the row is shown as a stale sighting rather than a live deal —
+// and it is exactly why such a row has no Add button.
+const STALE_AFTER_MS = 60 * 60 * 1000;
+
+function ageLabel(ms: number) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = m / 60;
+  if (h < 24) return `${h.toFixed(h < 10 ? 1 : 0)}h ago`;
+  return `${Math.round(h / 24)}d ago`;
 }
 
 function pct(price: number | null | undefined, ref: number | null | undefined) {
@@ -93,6 +110,8 @@ export default function BestDealsPage() {
               thirdPct: pct(match.price, match.thirdLowPrice),
               canStage: !!match.cartable && buyable.has(match.site),
               inCart: staged.has(`${match.site}:${watch.id}`),
+              stale: Date.now() - match.seenAt > STALE_AFTER_MS,
+              ageMs: Date.now() - match.seenAt,
             });
           }
         });
@@ -127,7 +146,8 @@ export default function BestDealsPage() {
     const best = withPct.length ? Math.min(...withPct.map((r) => r.steamPct!)) : null;
     const under75 = withPct.filter((r) => r.steamPct! < 75).length;
     const value = filtered.reduce((s, r) => s + r.match.price, 0);
-    return { best, under75, value, total: filtered.length };
+    const staleCount = filtered.filter((r) => r.stale).length;
+    return { best, under75, value, total: filtered.length, staleCount, fresh: filtered.length - staleCount };
   }, [filtered]);
 
   const filtersActive = !!(maxFloat || maxSteamPct || account !== 'All');
@@ -137,7 +157,7 @@ export default function BestDealsPage() {
       <PageHead
         title="Best deals"
         count={rows ? filtered.length : undefined}
-        subtitle="Live matches from each bot's last sweep, cheapest against Steam first. Refreshes every 30 seconds."
+        subtitle="Cheapest against Steam first, refreshed every 30 seconds. Rows dimmed and marked with an age are older sightings the bot can no longer stage — they return when a sweep finds them again."
       />
 
       {notConfigured && <div className="mt-6"><SetupBanner /></div>}
@@ -145,7 +165,12 @@ export default function BestDealsPage() {
 
       {rows && (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Live matches" value={stats.total} icon={<SparklesIcon className="h-3.5 w-3.5" aria-hidden="true" />} />
+          <StatCard
+            label="Live matches"
+            value={stats.fresh}
+            icon={<SparklesIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+            hint={stats.staleCount ? `${stats.staleCount} older sighting${stats.staleCount === 1 ? '' : 's'} also shown` : 'all seen this hour'}
+          />
           <StatCard
             label="Best vs Steam"
             value={stats.best != null ? `${stats.best}%` : '—'}
@@ -192,12 +217,16 @@ export default function BestDealsPage() {
                   <Th right>Float</Th>
                   <Th right>vs Steam</Th>
                   <Th right>vs 3rd party</Th>
+                  <Th right>Seen</Th>
                   <Th right />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={`${r.bot}:${r.watch.id}`} className="border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/50">
+                  <tr
+                    key={`${r.bot}:${r.watch.id}`}
+                    className={`border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/50 ${r.stale ? 'opacity-55' : ''}`}
+                  >
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-3">
                         <SkinThumb image={r.watch.image} name={r.watch.name} />
@@ -224,6 +253,15 @@ export default function BestDealsPage() {
                     <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
                       {r.thirdPct != null ? `${r.thirdPct}%` : '—'}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-xs">
+                      {r.stale ? (
+                        <span className="text-warning" title="Older than the 60 minute window the bot keeps a listing stageable for — very likely gone from the market">
+                          {ageLabel(r.ageMs)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">{ageLabel(r.ageMs)}</span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">
                       {r.canStage && (
                         r.inCart || justAdded.has(`${r.bot}:${r.watch.id}`) ? (
@@ -239,6 +277,14 @@ export default function BestDealsPage() {
                             <ShoppingCartIcon className="h-3.5 w-3.5" aria-hidden="true" /> Add
                           </button>
                         )
+                      )}
+                      {!r.canStage && r.stale && (
+                        <span
+                          className="mr-3 text-xs text-muted-foreground/60"
+                          title="This sighting is too old to stage — the bot no longer holds a buyable listing for it. It will come back when the next sweep finds it again."
+                        >
+                          stale
+                        </span>
                       )}
                       {r.match.url && (
                         <a

@@ -1,24 +1,32 @@
+'use client';
+import { useState } from 'react';
+
 // Marketplace badges.
 //
-// These are deliberately monogram tiles in each site's own accent colour, not
-// traced copies of their real logos — an approximated brand mark looks wrong at
-// a glance and misrepresents someone else's identity. A consistent set of
-// lettermarks reads cleaner in a dense table anyway.
+// These are each site's own icon, fetched once from the site itself and stored
+// in public/logos/ — no runtime call to a third party, so a marketplace being
+// down or blocking us can never affect this dashboard's rendering.
+//
+// CS.MONEY has no file here on purpose: every icon path on cs.money answers 404
+// behind Cloudflare (the same block documented for its API), and defeating a
+// bot check for a favicon is not worth doing. It falls back to a lettermark,
+// as does any site added later without an icon.
 
 interface SiteStyle {
   label: string;
   short: string;
+  logo?: string;
   bg: string;
   fg: string;
 }
 
 const SITES: Record<string, SiteStyle> = {
-  csfloat: { label: 'CSFloat', short: 'CF', bg: 'rgba(56,139,253,0.16)', fg: '#58a6ff' },
-  dmarket: { label: 'DMarket', short: 'DM', bg: 'rgba(45,212,191,0.16)', fg: '#2dd4bf' },
-  lisskins: { label: 'LIS-Skins', short: 'LS', bg: 'rgba(249,115,22,0.16)', fg: '#fb923c' },
-  tradeit: { label: 'Tradeit.gg', short: 'TI', bg: 'rgba(52,211,153,0.16)', fg: '#34d399' },
+  csfloat: { label: 'CSFloat', short: 'CF', logo: '/logos/csfloat.ico', bg: 'rgba(56,139,253,0.16)', fg: '#58a6ff' },
+  dmarket: { label: 'DMarket', short: 'DM', logo: '/logos/dmarket.png', bg: 'rgba(45,212,191,0.16)', fg: '#2dd4bf' },
+  lisskins: { label: 'LIS-Skins', short: 'LS', logo: '/logos/lisskins.ico', bg: 'rgba(249,115,22,0.16)', fg: '#fb923c' },
+  tradeit: { label: 'Tradeit.gg', short: 'TI', logo: '/logos/tradeit.ico', bg: 'rgba(52,211,153,0.16)', fg: '#34d399' },
+  steam: { label: 'Steam', short: 'ST', logo: '/logos/steam.ico', bg: 'rgba(139,148,255,0.16)', fg: '#a5b4fc' },
   csmoney: { label: 'CS.MONEY', short: 'CM', bg: 'rgba(250,204,21,0.16)', fg: '#facc15' },
-  steam: { label: 'Steam', short: 'ST', bg: 'rgba(139,148,255,0.16)', fg: '#a5b4fc' },
 };
 
 function styleFor(site: string): SiteStyle {
@@ -34,14 +42,29 @@ function styleFor(site: string): SiteStyle {
 
 export function SiteLogo({ site, withLabel = true }: { site: string; withLabel?: boolean }) {
   const s = styleFor(site);
+  const [failed, setFailed] = useState(false);
+  const showLogo = s.logo && !failed;
+
   return (
     <span className="inline-flex items-center gap-2 whitespace-nowrap">
       <span
         aria-hidden="true"
-        className="grid h-5 w-5 shrink-0 place-items-center rounded-[5px] text-[10px] font-bold tracking-tight"
+        className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-[5px] text-[10px] font-bold tracking-tight"
         style={{ background: s.bg, color: s.fg }}
       >
-        {s.short}
+        {showLogo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={s.logo}
+            alt=""
+            width={20}
+            height={20}
+            className="h-full w-full object-contain"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          s.short
+        )}
       </span>
       {withLabel ? <span className="text-muted-foreground">{s.label}</span> : <span className="sr-only">{s.label}</span>}
     </span>

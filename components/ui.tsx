@@ -69,10 +69,15 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   return <div className={`overflow-hidden rounded-xl border border-border bg-surface/40 ${className}`}>{children}</div>;
 }
 
-export function TableWrap({ children }: { children: ReactNode }) {
+export function TableWrap({ children, maxHeight }: { children: ReactNode; maxHeight?: string }) {
   return (
     <Card>
-      <div className="overflow-x-auto">{children}</div>
+      <div
+        className={`overflow-x-auto ${maxHeight ? 'sticky-head overflow-y-auto' : ''}`}
+        style={maxHeight ? { maxHeight } : undefined}
+      >
+        {children}
+      </div>
     </Card>
   );
 }

@@ -206,7 +206,7 @@ export default function BestDealsPage() {
 
       {rows && (
         <div className="mt-4">
-          <TableWrap>
+          <TableWrap maxHeight="70vh">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-surface/60">
                 <tr>

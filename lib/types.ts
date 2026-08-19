@@ -75,6 +75,16 @@ export interface BuyingConfig {
   buyableSites: string[]; // adapters that can actually be purchased from
 }
 
+// One line of "what the bot did", written by the bot so the dashboard can show
+// results without you having to go and read Telegram.
+export interface BotEvent {
+  id: string;
+  at: number;
+  level: 'info' | 'good' | 'warn' | 'bad';
+  text: string;
+  detail: string | null;
+}
+
 export interface WatchlistState {
   updatedAt: number;
   watches: WatchItem[];
@@ -82,6 +92,7 @@ export interface WatchlistState {
   purchases: Purchase[]; // most recent purchases, newest first
   cart: CartItem[];
   buying: BuyingConfig | null;
+  events: BotEvent[];
 }
 
 export type OrderStatus = 'top' | 'outbid' | 'ceiling' | 'pending' | 'error';

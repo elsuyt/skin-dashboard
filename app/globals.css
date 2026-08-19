@@ -72,3 +72,41 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Keyboard users get a visible ring everywhere; mouse users never see it.
+   Removing focus outlines outright is the single most common accessibility
+   regression in dashboards like this, so it is set once, globally. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 35%, transparent);
+  color: var(--foreground);
+}
+
+/* Long tables: keep the header visible while scrolling the body. */
+.sticky-head thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+/* Respect the OS setting. Anything decorative stops; nothing becomes
+   unusable, since no state here is conveyed by motion alone. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

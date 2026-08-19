@@ -6,10 +6,12 @@ import { csmoneyLink, tradeitLink } from '@/lib/links';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo } from '@/components/SiteLogo';
+import { SkinPicker } from '@/components/SkinPicker';
+import { ActivityFeed } from '@/components/ActivityFeed';
 import {
   Page, PageHead, TableWrap, Th, Empty, Skeleton, Card, inputClass, btnPrimary,
 } from '@/components/ui';
-import type { WatchItem, WatchMatch } from '@/lib/types';
+import type { WatchItem, WatchMatch, BotEvent } from '@/lib/types';
 import { PlusIcon, TrashIcon, ArrowTopRightOnSquareIcon, ListBulletIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
@@ -31,6 +33,7 @@ export default function WatchlistsPage() {
   const [priceFilter, setPriceFilter] = useState('');
   const [form, setForm] = useState(emptyForm());
   const [busy, setBusy] = useState(false);
+  const [events, setEvents] = useState<BotEvent[]>([]);
 
   async function load() {
     try {
@@ -38,6 +41,7 @@ export default function WatchlistsPage() {
       setWatches(state.watches);
       setMatches(new Map(state.matches.map((m) => [m.watchId, m])));
       setUpdatedAt(state.updatedAt);
+      setEvents(state.events ?? []);
       setNotConfigured(false);
       setError('');
     } catch (e) {
@@ -117,27 +121,46 @@ export default function WatchlistsPage() {
       {error && <div className="mt-6"><ErrorBanner message={error} /></div>}
 
       <Card className="mt-5">
-        <form onSubmit={submitAdd} className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-7">
-          <input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="AK-47 | Redline"
-            aria-label="Skin name"
-            className={`${inputClass} col-span-2 sm:col-span-2`}
-          />
-          <select value={form.exterior} onChange={(e) => setForm({ ...form, exterior: e.target.value })} aria-label="Exterior" className={`${inputClass} cursor-pointer`}>
-            {EXTERIORS.map((x) => <option key={x}>{x}</option>)}
-          </select>
-          <input value={form.maxFloat} onChange={(e) => setForm({ ...form, maxFloat: e.target.value })} placeholder="max float" inputMode="decimal" aria-label="Max float" className={`${inputClass} tabular`} />
-          <input value={form.maxPrice} onChange={(e) => setForm({ ...form, maxPrice: e.target.value })} placeholder="max price $" inputMode="decimal" aria-label="Max price" className={`${inputClass} tabular`} />
-          <label className="flex cursor-pointer items-center gap-2 px-1 text-sm">
-            <input type="checkbox" checked={form.stattrak} onChange={(e) => setForm({ ...form, stattrak: e.target.checked })} className="cursor-pointer accent-primary" />
-            StatTrak
-          </label>
-          <button type="submit" disabled={busy} className={btnPrimary}>
-            <PlusIcon className="h-4 w-4" aria-hidden="true" />
-            Add
-          </button>
+        <form onSubmit={submitAdd} className="p-5">
+          <p className="text-sm font-medium">Add a skin to watch</p>
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_repeat(2,minmax(0,0.7fr))_auto]">
+            <div>
+              <label htmlFor="watch-name" className="mb-1.5 block text-xs font-medium text-muted-foreground">Skin</label>
+              <SkinPicker id="watch-name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+            </div>
+            <div>
+              <label htmlFor="watch-ext" className="mb-1.5 block text-xs font-medium text-muted-foreground">Exterior</label>
+              <select
+                id="watch-ext"
+                value={form.exterior}
+                onChange={(e) => setForm({ ...form, exterior: e.target.value })}
+                className={`${inputClass} w-full cursor-pointer`}
+              >
+                {EXTERIORS.map((x) => <option key={x}>{x}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="watch-float" className="mb-1.5 block text-xs font-medium text-muted-foreground">Max float</label>
+              <input id="watch-float" value={form.maxFloat} onChange={(e) => setForm({ ...form, maxFloat: e.target.value })} placeholder="any" inputMode="decimal" className={`${inputClass} w-full tabular`} />
+            </div>
+            <div>
+              <label htmlFor="watch-price" className="mb-1.5 block text-xs font-medium text-muted-foreground">Max price $</label>
+              <input id="watch-price" value={form.maxPrice} onChange={(e) => setForm({ ...form, maxPrice: e.target.value })} placeholder="0.00" inputMode="decimal" className={`${inputClass} w-full tabular`} />
+            </div>
+            <div className="flex items-end gap-3">
+              <label className="flex cursor-pointer select-none items-center gap-2 pb-2 text-sm">
+                <input type="checkbox" checked={form.stattrak} onChange={(e) => setForm({ ...form, stattrak: e.target.checked })} className="cursor-pointer accent-primary" />
+                StatTrak
+              </label>
+              <button type="submit" disabled={busy || !form.name.trim() || !form.maxPrice} className={btnPrimary}>
+                <PlusIcon className="h-4 w-4" aria-hidden="true" />
+                Add
+              </button>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground/70">
+            Watches every market by default. The bot picks it up on its next sync, within ~30s.
+          </p>
         </form>
       </Card>
 
@@ -153,7 +176,7 @@ export default function WatchlistsPage() {
 
       {watches && (
         <div className="mt-4">
-          <TableWrap>
+          <TableWrap maxHeight="65vh">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-surface/60">
                 <tr>
@@ -222,6 +245,16 @@ export default function WatchlistsPage() {
               </Empty>
             )}
           </TableWrap>
+        </div>
+      )}
+
+      {watches && (
+        <div className="mt-8">
+          <h2 className="text-sm font-medium">Recent activity on this bot</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">What it actually did — no need to check Telegram.</p>
+          <Card className="mt-3">
+            <ActivityFeed events={events} limit={8} emptyText="Nothing yet on this bot." />
+          </Card>
         </div>
       )}
     </Page>

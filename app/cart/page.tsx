@@ -5,10 +5,11 @@ import { api, NotConfiguredError } from '@/lib/api-client';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo } from '@/components/SiteLogo';
+import { ActivityFeed } from '@/components/ActivityFeed';
 import {
-  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, btnGhost,
+  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, Card, btnGhost,
 } from '@/components/ui';
-import type { CartItem, BuyingConfig } from '@/lib/types';
+import type { CartItem, BuyingConfig, BotEvent } from '@/lib/types';
 import {
   ShoppingCartIcon, TrashIcon, ArrowTopRightOnSquareIcon,
   ExclamationTriangleIcon, LockClosedIcon, BanknotesIcon,
@@ -29,6 +30,7 @@ export default function CartPage() {
   const [error, setError] = useState('');
   const [armed, setArmed] = useState(false);
   const [queued, setQueued] = useState(false);
+  const [events, setEvents] = useState<BotEvent[]>([]);
 
   async function load() {
     try {
@@ -36,6 +38,7 @@ export default function CartPage() {
       setItems(state.cart ?? []);
       setBuying(state.buying ?? null);
       setUpdatedAt(state.updatedAt);
+      setEvents(state.events ?? []);
       setNotConfigured(false);
       setError('');
     } catch (e) {
@@ -59,9 +62,11 @@ export default function CartPage() {
     setTimeout(load, 3000);
   }
 
+  const [confirmClear, setConfirmClear] = useState(false);
+
   async function clearAll() {
-    if (!confirm('Empty this cart? Nothing is bought — it just unstages everything.')) return;
     await api.clearCart(botKey);
+    setConfirmClear(false);
     setTimeout(load, 3000);
   }
 
@@ -94,10 +99,22 @@ export default function CartPage() {
         subtitle="Items staged on the bot, not yet bought. Checkout runs the bot's own buy loop — the same one the Telegram confirm uses, with the same caps."
         actions={
           list.length ? (
-            <button onClick={clearAll} className={btnGhost}>
-              <TrashIcon className="h-4 w-4" aria-hidden="true" />
-              Empty cart
-            </button>
+            confirmClear ? (
+              <span className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Remove all {list.length}?</span>
+                <button onClick={clearAll} className="cursor-pointer rounded-lg bg-destructive px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90">
+                  Remove all
+                </button>
+                <button onClick={() => setConfirmClear(false)} className="cursor-pointer px-1 text-sm text-muted-foreground hover:text-foreground">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmClear(true)} className={btnGhost}>
+                <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                Remove all
+              </button>
+            )
           ) : undefined
         }
       />
@@ -253,7 +270,7 @@ export default function CartPage() {
           </div>
 
           {queued ? (
-            <span className="text-sm text-success">Checkout queued — watch Telegram for the result.</span>
+            <span className="text-sm text-success">Checkout queued — the result appears below within ~30s.</span>
           ) : armed ? (
             <div className="flex items-center gap-2">
               <button
@@ -279,6 +296,16 @@ export default function CartPage() {
           )}
         </div>
       )}
+
+      <div className="mt-8">
+        <h2 className="text-sm font-medium">What the bot did</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Checkout results, auto-buys and errors land here — you do not need to open Telegram.
+        </p>
+        <Card className="mt-3">
+          <ActivityFeed events={events} limit={12} emptyText="Nothing yet on this bot." />
+        </Card>
+      </div>
 
       {updatedAt > 0 && (
         <p className="mt-3 text-xs text-muted-foreground/60">bot last synced {new Date(updatedAt).toLocaleTimeString()}</p>

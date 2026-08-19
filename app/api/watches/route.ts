@@ -11,7 +11,7 @@ export const GET = withApiErrors(async (req: NextRequest) => {
   }
   const state = await getWatchlistState(bot);
   if (!state) {
-    return NextResponse.json({ updatedAt: 0, watches: [], matches: [], purchases: [], cart: [], buying: null });
+    return NextResponse.json({ updatedAt: 0, watches: [], matches: [], purchases: [], cart: [], buying: null, events: [] });
   }
 
   // Artwork is attached here rather than pushed by the bots: it's presentation,

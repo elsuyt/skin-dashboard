@@ -17,7 +17,7 @@ function requireWatchlistBot(bot: unknown): NextResponse | null {
 }
 
 export const POST = withApiErrors(async (req: NextRequest) => {
-  const { bot, action, watchId } = await req.json();
+  const { bot, action, watchId, matchId } = await req.json();
   const bad = requireWatchlistBot(bot);
   if (bad) return bad;
 
@@ -25,7 +25,11 @@ export const POST = withApiErrors(async (req: NextRequest) => {
     if (!watchId || typeof watchId !== 'string') {
       return NextResponse.json({ error: 'watchId is required' }, { status: 400 });
     }
-    await enqueueCommand(bot, makeCommand('cart-add', { watchId }));
+    if (matchId != null && typeof matchId !== 'string') {
+      return NextResponse.json({ error: 'matchId must be a string' }, { status: 400 });
+    }
+    // No matchId = stage the cheapest listing the bot still holds for the watch.
+    await enqueueCommand(bot, makeCommand('cart-add', { watchId, matchId }));
     return NextResponse.json({ ok: true, queued: true });
   }
 

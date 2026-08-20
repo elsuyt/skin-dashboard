@@ -1,39 +1,43 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { BOTS, ACCOUNTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo, SteamMark } from '@/components/SiteLogo';
-import {
-  Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, inputClass,
-} from '@/components/ui';
+import { Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, inputClass } from '@/components/ui';
 import type { WatchMatch, WatchItem } from '@/lib/types';
-import { ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon, ShoppingCartIcon, CheckIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon,
+  ShoppingCartIcon, CheckIcon, ChevronRightIcon, ChevronDownIcon, SwatchIcon,
+} from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 
-interface Row {
+// The bot only holds a listing it can still stage for 60 minutes (state.cjs's
+// getMatchListing TTL). Past that the listing is very likely gone from the
+// market, so the row is shown as a stale sighting rather than a live deal.
+const STALE_AFTER_MS = 60 * 60 * 1000;
+
+interface Group {
+  key: string;
   bot: string;
   account: string;
   watch: WatchItem;
-  match: WatchMatch;
+  best: WatchMatch;          // cheapest
+  bestFloat: WatchMatch | null; // lowest float, when it isn't the cheapest
+  alternatives: WatchMatch[];
   steamPct: number | null;
   thirdPct: number | null;
-  // Staging is only offered when the bot still holds a buyable listing for
-  // this watch AND that market can actually be purchased from. Tradeit has
-  // no buy path at all, so it never gets a button.
-  canStage: boolean;
-  inCart: boolean;
   stale: boolean;
   ageMs: number;
+  inCart: Set<string>; // matchIds already staged, straight from the bot
 }
 
-// The bot only holds a listing it can still stage for 60 minutes (state.cjs's
-// getMatchListing TTL). Past that the listing is very likely gone from the
-// market, so the row is shown as a stale sighting rather than a live deal —
-// and it is exactly why such a row has no Add button.
-const STALE_AFTER_MS = 60 * 60 * 1000;
+function pct(price: number | null | undefined, ref: number | null | undefined) {
+  if (price == null || ref == null || ref <= 0) return null;
+  return Math.round((price / ref) * 100);
+}
 
 function ageLabel(ms: number) {
   const m = Math.round(ms / 60000);
@@ -44,13 +48,8 @@ function ageLabel(ms: number) {
   return `${Math.round(h / 24)}d ago`;
 }
 
-function pct(price: number | null | undefined, ref: number | null | undefined) {
-  if (price == null || ref == null || ref <= 0) return null;
-  return Math.round((price / ref) * 100);
-}
-
-// The colour has to mean the same thing everywhere: green = a real discount to
-// Steam, amber = fine but not a steal, plain = at or above Steam.
+// Green = a real discount to Steam, amber = fine but not a steal, plain =
+// at or above Steam. Every pill also carries text, never colour alone.
 function steamTone(p: number | null) {
   if (p == null) return 'muted' as const;
   if (p < 75) return 'success' as const;
@@ -59,27 +58,22 @@ function steamTone(p: number | null) {
 }
 
 export default function BestDealsPage() {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [groups, setGroups] = useState<Group[] | null>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState('');
   const [account, setAccount] = useState<string>('All');
   const [maxFloat, setMaxFloat] = useState('');
   const [maxSteamPct, setMaxSteamPct] = useState('');
-  // Optimistic: the bot only applies the command on its next sync (~30s), so
-  // without this the button would look like it did nothing for half a minute.
-  const [justAdded, setJustAdded] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [staged, setStaged] = useState<Set<string>>(new Set());
 
-  async function addToCart(r: Row) {
-    setJustAdded((prev) => new Set(prev).add(`${r.bot}:${r.watch.id}`));
+  async function addToCart(g: Group, m: WatchMatch) {
+    setStaged((prev) => new Set(prev).add(m.matchId));
     try {
-      await api.addToCart(r.bot, r.watch.id);
+      await api.addToCart(g.bot, g.watch.id, m.matchId);
     } catch (e) {
-      setJustAdded((prev) => {
-        const next = new Set(prev);
-        next.delete(`${r.bot}:${r.watch.id}`);
-        return next;
-      });
+      setStaged((prev) => { const n = new Set(prev); n.delete(m.matchId); return n; });
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -90,33 +84,53 @@ export default function BestDealsPage() {
       try {
         const results = await Promise.all(WATCHLIST_BOTS.map((b) => api.getWatchlist(b.key)));
         if (cancelled) return;
-        const next: Row[] = [];
+        const next: Group[] = [];
         let hidden = 0;
+
         results.forEach((state, i) => {
           const bot = WATCHLIST_BOTS[i];
-          const matchByWatch = new Map(state.matches.map((m) => [m.watchId, m]));
-          const buyable = new Set(state.buying?.buyableSites ?? []);
-          const staged = new Set((state.cart ?? []).map((c) => `${c.site}:${c.watchId}`));
+          const byWatch = new Map<string, WatchMatch[]>();
+          for (const m of state.matches) {
+            const list = byWatch.get(m.watchId);
+            if (list) list.push(m); else byWatch.set(m.watchId, [m]);
+          }
+          // cart.cjs keys every staged item as `${site}:${listing.id}` — the
+          // same string recordMatches() uses for matchId, so this compares
+          // like for like without inventing a second identity scheme.
+          const inCart = new Set((state.cart ?? []).map((c) => c.key));
+
           for (const watch of state.watches) {
             if (!watch.enabled) continue;
-            const match = matchByWatch.get(watch.id);
-            if (!match) { hidden++; continue; }
+            const list = (byWatch.get(watch.id) ?? []).slice().sort((a, b) => a.price - b.price);
+            if (!list.length) { hidden++; continue; }
+
+            const best = list[0];
+            // The point of showing alternatives: a lower float is often only a
+            // cent or two dearer, and the cheapest row alone hides it.
+            const withFloat = list.filter((m) => m.float != null);
+            const lowestFloat = withFloat.length
+              ? withFloat.reduce((a, b) => (a.float! <= b.float! ? a : b))
+              : null;
+
             next.push({
+              key: `${bot.key}:${watch.id}`,
               bot: bot.key,
               account: bot.account,
               watch,
-              match,
-              steamPct: pct(match.price, match.steamPrice),
-              thirdPct: pct(match.price, match.thirdLowPrice),
-              canStage: !!match.cartable && buyable.has(match.site),
-              inCart: staged.has(`${match.site}:${watch.id}`),
-              stale: Date.now() - match.seenAt > STALE_AFTER_MS,
-              ageMs: Date.now() - match.seenAt,
+              best,
+              bestFloat: lowestFloat && lowestFloat.matchId !== best.matchId ? lowestFloat : null,
+              alternatives: list.slice(1),
+              steamPct: pct(best.price, best.steamPrice),
+              thirdPct: pct(best.price, best.thirdLowPrice),
+              stale: Date.now() - best.seenAt > STALE_AFTER_MS,
+              ageMs: Date.now() - best.seenAt,
+              inCart,
             });
           }
         });
+
         next.sort((a, b) => (a.steamPct ?? 999) - (b.steamPct ?? 999));
-        setRows(next);
+        setGroups(next);
         setHiddenCount(hidden);
         setNotConfigured(false);
         setError('');
@@ -132,38 +146,71 @@ export default function BestDealsPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    if (!rows) return [];
-    return rows.filter((r) => {
-      if (account !== 'All' && r.account !== account) return false;
-      if (maxFloat && r.match.float != null && r.match.float > Number(maxFloat)) return false;
-      if (maxSteamPct && r.steamPct != null && r.steamPct > Number(maxSteamPct)) return false;
+    if (!groups) return [];
+    return groups.filter((g) => {
+      if (account !== 'All' && g.account !== account) return false;
+      if (maxFloat && g.best.float != null && g.best.float > Number(maxFloat)) return false;
+      if (maxSteamPct && g.steamPct != null && g.steamPct > Number(maxSteamPct)) return false;
       return true;
     });
-  }, [rows, account, maxFloat, maxSteamPct]);
+  }, [groups, account, maxFloat, maxSteamPct]);
 
   const stats = useMemo(() => {
-    const withPct = filtered.filter((r) => r.steamPct != null);
-    const best = withPct.length ? Math.min(...withPct.map((r) => r.steamPct!)) : null;
-    const under75 = withPct.filter((r) => r.steamPct! < 75).length;
-    const value = filtered.reduce((s, r) => s + r.match.price, 0);
-    const staleCount = filtered.filter((r) => r.stale).length;
-    return { best, under75, value, total: filtered.length, staleCount, fresh: filtered.length - staleCount };
+    const withPct = filtered.filter((g) => g.steamPct != null);
+    const best = withPct.length ? Math.min(...withPct.map((g) => g.steamPct!)) : null;
+    const under75 = withPct.filter((g) => g.steamPct! < 75).length;
+    const staleCount = filtered.filter((g) => g.stale).length;
+    const alts = filtered.reduce((s, g) => s + g.alternatives.length, 0);
+    return { best, under75, staleCount, fresh: filtered.length - staleCount, alts };
   }, [filtered]);
 
   const filtersActive = !!(maxFloat || maxSteamPct || account !== 'All');
+
+  function toggle(key: string) {
+    setOpen((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  }
+
+  function stageCell(g: Group, m: WatchMatch) {
+    const canStage = !!m.cartable;
+    if (!canStage) {
+      return g.stale
+        ? <span className="text-xs text-muted-foreground/60" title="Too old to stage — the bot no longer holds a buyable listing. It returns when a sweep finds it again.">stale</span>
+        : <span className="text-xs text-muted-foreground/50" title="This market has no purchase path">—</span>;
+    }
+    if (g.inCart.has(m.matchId) || staged.has(m.matchId)) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-success">
+          <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> in cart
+        </span>
+      );
+    }
+    return (
+      <button
+        onClick={() => addToCart(g, m)}
+        title="Stage this exact listing — spends nothing"
+        className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-primary"
+      >
+        <ShoppingCartIcon className="h-3.5 w-3.5" aria-hidden="true" /> Add
+      </button>
+    );
+  }
 
   return (
     <Page>
       <PageHead
         title="Best deals"
-        count={rows ? filtered.length : undefined}
-        subtitle="Cheapest against Steam first, refreshed every 30 seconds. Rows dimmed and marked with an age are older sightings the bot can no longer stage — they return when a sweep finds them again."
+        count={groups ? filtered.length : undefined}
+        subtitle="One row per skin, cheapest listing first. Expand a row to compare the other floats — a better float is often only a cent or two more."
       />
 
       {notConfigured && <div className="mt-6"><SetupBanner /></div>}
       {error && <div className="mt-6"><ErrorBanner message={error} /></div>}
 
-      {rows && (
+      {groups && (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             label="Live matches"
@@ -179,18 +226,26 @@ export default function BestDealsPage() {
             hint="lower is a better deal"
           />
           <StatCard label="Under 75% of Steam" value={stats.under75} tone="success" icon={<TagIcon className="h-3.5 w-3.5" aria-hidden="true" />} />
-          <StatCard label="Combined ask" value={`$${stats.value.toFixed(2)}`} hint="if you bought every row" />
+          <StatCard
+            label="Other floats"
+            value={stats.alts}
+            icon={<SwatchIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+            hint="alternative listings behind these rows"
+          />
         </div>
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-2.5">
         <FunnelIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <select value={account} onChange={(e) => setAccount(e.target.value)} className={`${inputClass} cursor-pointer`}>
+        <label htmlFor="f-account" className="sr-only">Account</label>
+        <select id="f-account" value={account} onChange={(e) => setAccount(e.target.value)} className={`${inputClass} cursor-pointer`}>
           <option>All</option>
           {ACCOUNTS.map((a) => <option key={a}>{a}</option>)}
         </select>
-        <input value={maxFloat} onChange={(e) => setMaxFloat(e.target.value)} placeholder="max float" inputMode="decimal" className={`${inputClass} w-32 tabular`} />
-        <input value={maxSteamPct} onChange={(e) => setMaxSteamPct(e.target.value)} placeholder="max steam %" inputMode="decimal" className={`${inputClass} w-36 tabular`} />
+        <label htmlFor="f-float" className="sr-only">Max float</label>
+        <input id="f-float" value={maxFloat} onChange={(e) => setMaxFloat(e.target.value)} placeholder="max float" inputMode="decimal" className={`${inputClass} w-32 tabular`} />
+        <label htmlFor="f-steam" className="sr-only">Max percent of Steam</label>
+        <input id="f-steam" value={maxSteamPct} onChange={(e) => setMaxSteamPct(e.target.value)} placeholder="max steam %" inputMode="decimal" className={`${inputClass} w-36 tabular`} />
         {filtersActive && (
           <button
             onClick={() => { setAccount('All'); setMaxFloat(''); setMaxSteamPct(''); }}
@@ -202,9 +257,9 @@ export default function BestDealsPage() {
         )}
       </div>
 
-      {!rows && !notConfigured && !error && <div className="mt-6"><Skeleton /></div>}
+      {!groups && !notConfigured && !error && <div className="mt-6"><Skeleton /></div>}
 
-      {rows && (
+      {groups && (
         <div className="mt-4">
           <TableWrap maxHeight="70vh">
             <table className="w-full text-sm">
@@ -222,83 +277,125 @@ export default function BestDealsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
-                  <tr
-                    key={`${r.bot}:${r.watch.id}`}
-                    className={`border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/50 ${r.stale ? 'opacity-55' : ''}`}
-                  >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-3">
-                        <SkinThumb image={r.watch.image} name={r.watch.name} />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate font-medium">{r.watch.name}</span>
-                            {r.watch.stattrak && (
-                              <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>
+                {filtered.map((g) => {
+                  const isOpen = open.has(g.key);
+                  return (
+                    <Fragment key={g.key}>
+                      <tr className={`border-b border-border/60 transition-colors hover:bg-surface-hover/50 ${g.stale ? 'opacity-55' : ''}`}>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            {g.alternatives.length > 0 ? (
+                              <button
+                                onClick={() => toggle(g.key)}
+                                aria-expanded={isOpen}
+                                aria-label={`${isOpen ? 'Hide' : 'Show'} ${g.alternatives.length} other listing${g.alternatives.length === 1 ? '' : 's'} for ${g.watch.name}`}
+                                className="cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                              >
+                                {isOpen
+                                  ? <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
+                                  : <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />}
+                              </button>
+                            ) : (
+                              <span className="w-5" aria-hidden="true" />
                             )}
+                            <SkinThumb image={g.watch.image} name={g.watch.name} />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate font-medium">{g.watch.name}</span>
+                                {g.watch.stattrak && (
+                                  <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {g.watch.exterior}
+                                {g.alternatives.length > 0 && (
+                                  <span className="text-muted-foreground/70"> · {g.alternatives.length + 1} listings</span>
+                                )}
+                              </p>
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground">{r.watch.exterior}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.account}</td>
-                    <td className="px-4 py-2.5"><SiteLogo site={r.match.site} /></td>
-                    <td className="px-4 py-2.5 text-right font-medium tabular">${r.match.price.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
-                      {r.match.float != null ? r.match.float.toFixed(4) : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {r.steamPct != null ? <Pill tone={steamTone(r.steamPct)}>{r.steamPct}%</Pill> : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
-                      {r.thirdPct != null ? `${r.thirdPct}%` : '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-xs">
-                      {r.stale ? (
-                        <span className="text-warning" title="Older than the 60 minute window the bot keeps a listing stageable for — very likely gone from the market">
-                          {ageLabel(r.ageMs)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">{ageLabel(r.ageMs)}</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">
-                      {r.canStage && (
-                        r.inCart || justAdded.has(`${r.bot}:${r.watch.id}`) ? (
-                          <span className="mr-3 inline-flex items-center gap-1 text-xs text-success">
-                            <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" /> in cart
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => addToCart(r)}
-                            title="Stage this listing on the bot — spends nothing"
-                            className="mr-3 inline-flex cursor-pointer items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
-                          >
-                            <ShoppingCartIcon className="h-3.5 w-3.5" aria-hidden="true" /> Add
-                          </button>
-                        )
-                      )}
-                      {!r.canStage && r.stale && (
-                        <span
-                          className="mr-3 text-xs text-muted-foreground/60"
-                          title="This sighting is too old to stage — the bot no longer holds a buyable listing for it. It will come back when the next sweep finds it again."
-                        >
-                          stale
-                        </span>
-                      )}
-                      {r.match.url && (
-                        <a
-                          href={r.match.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
-                        >
-                          Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{g.account}</td>
+                        <td className="px-4 py-2.5"><SiteLogo site={g.best.site} /></td>
+                        <td className="px-4 py-2.5 text-right font-medium tabular">${g.best.price.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-right tabular">
+                          {g.best.float != null ? g.best.float.toFixed(4) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {g.steamPct != null ? <Pill tone={steamTone(g.steamPct)}>{g.steamPct}%</Pill> : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground tabular">
+                          {g.thirdPct != null ? `${g.thirdPct}%` : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right text-xs">
+                          <span className={g.stale ? 'text-warning' : 'text-muted-foreground'}>{ageLabel(g.ageMs)}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                          <span className="mr-3">{stageCell(g, g.best)}</span>
+                          {g.best.url && (
+                            <a
+                              href={g.best.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+                            >
+                              Open <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* A better float for a few cents is the whole reason this
+                          expands, so each alternative states its delta outright. */}
+                      {isOpen && g.alternatives.map((m) => {
+                        const dPrice = m.price - g.best.price;
+                        const dFloat = m.float != null && g.best.float != null ? m.float - g.best.float : null;
+                        const isBestFloat = g.bestFloat?.matchId === m.matchId;
+                        return (
+                          <tr key={m.matchId} className="border-b border-border/60 bg-surface/30 text-xs">
+                            <td className="py-2 pl-16 pr-4">
+                              <span className="text-muted-foreground">
+                                {isBestFloat ? 'Lowest float of this set' : 'Alternative listing'}
+                              </span>
+                              {isBestFloat && (
+                                <span className="ml-2 rounded bg-success/12 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+                                  best float
+                                </span>
+                              )}
+                            </td>
+                            <td />
+                            <td className="px-4 py-2"><SiteLogo site={m.site} withLabel={false} /></td>
+                            <td className="px-4 py-2 text-right tabular">
+                              ${m.price.toFixed(2)}
+                              {dPrice > 0 && <span className="ml-1.5 text-warning">+${dPrice.toFixed(2)}</span>}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular">
+                              {m.float != null ? m.float.toFixed(4) : '—'}
+                              {dFloat != null && dFloat < 0 && (
+                                <span className="ml-1.5 text-success">{dFloat.toFixed(4)}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular text-muted-foreground">
+                              {pct(m.price, m.steamPrice) != null ? `${pct(m.price, m.steamPrice)}%` : '—'}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular text-muted-foreground">
+                              {pct(m.price, m.thirdLowPrice) != null ? `${pct(m.price, m.thirdLowPrice)}%` : '—'}
+                            </td>
+                            <td />
+                            <td className="whitespace-nowrap px-4 py-2 text-right">
+                              <span className="mr-3">{stageCell(g, m)}</span>
+                              {m.url && (
+                                <a href={m.url} target="_blank" rel="noreferrer" className="text-muted-foreground transition-colors hover:text-primary">
+                                  Open
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
             {!filtered.length && (
@@ -310,7 +407,7 @@ export default function BestDealsPage() {
         </div>
       )}
 
-      {rows && hiddenCount > 0 && (
+      {groups && hiddenCount > 0 && (
         <p className="mt-3 text-xs text-muted-foreground/60">
           {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} had no match in the last sweep and {hiddenCount === 1 ? 'is' : 'are'} hidden here.
         </p>

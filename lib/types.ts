@@ -19,6 +19,9 @@ export interface WatchItem {
 // Absent (undefined) fields mean the bot hasn't matched that watch recently.
 export interface WatchMatch {
   watchId: string;
+  // Unique per listing ("<site>:<listingId>"). A watch can have several
+  // matches — the cheapest is not always the best float.
+  matchId: string;
   site: string;
   price: number;
   float: number | null;
@@ -137,7 +140,7 @@ export type Command =
   | { id: string; type: 'cancel-order'; payload: { orderId: string } }
   | { id: string; type: 'update-order-ceiling'; payload: { orderId: string; maxCents: number } }
   | { id: string; type: 'refresh-session'; payload: Record<string, never> }
-  | { id: string; type: 'cart-add'; payload: { watchId: string } }
+  | { id: string; type: 'cart-add'; payload: { watchId: string; matchId?: string } }
   | { id: string; type: 'cart-remove'; payload: { key: string } }
   | { id: string; type: 'cart-clear'; payload: Record<string, never> }
   | { id: string; type: 'cart-checkout'; payload: Record<string, never> };

@@ -7,9 +7,24 @@ import { COOKIE_NAME, verifySessionToken } from '@/lib/auth';
 // on either runtime depending on config.
 const PUBLIC_PATHS = ['/login', '/api/auth/login'];
 
+// Routes that authenticate themselves and must NOT be gated here.
+//
+// /api/orders/session is called by the Steam Session Bridge extension. That is
+// a cross-site fetch from a chrome-extension:// origin, and the dashboard
+// session cookie is SameSite=Lax, so it is never sent on such a request — the
+// cookie check below would reject it no matter what. The route therefore does
+// its own check, accepting EITHER the normal session cookie OR a bearer
+// BRIDGE_SECRET. Do not add anything here that does not authenticate itself.
+const SELF_AUTHED_PATHS = ['/api/orders/session'];
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (PUBLIC_PATHS.some((p) => pathname === p) || pathname.startsWith('/_next') || pathname.startsWith('/favicon')) {
+  if (
+    PUBLIC_PATHS.some((p) => pathname === p) ||
+    SELF_AUTHED_PATHS.some((p) => pathname === p) ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon')
+  ) {
     return NextResponse.next();
   }
 

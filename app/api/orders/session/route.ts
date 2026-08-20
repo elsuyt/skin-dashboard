@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { botByKey } from '@/lib/bots';
 import { putSessionUpdate } from '@/lib/store';
 import { withApiErrors } from '@/lib/api-handler';
+import { COOKIE_NAME, verifySessionToken } from '@/lib/auth';
 
 // Accepts a Steam session pasted out of the browser and hands it to the bot.
 //
@@ -16,10 +17,41 @@ import { withApiErrors } from '@/lib/api-handler';
 // (code 22) — that is an account-level policy, not a session problem. This
 // exists for when the refresh token expires or gets revoked.
 
+// This route is exempt from the proxy gate (see SELF_AUTHED_PATHS) and so must
+// authenticate itself. Two ways in:
+//
+//   1. the normal dashboard session cookie, for the in-app Paste form
+//   2. Authorization: Bearer <BRIDGE_SECRET>, for the browser extension —
+//      a cross-site fetch can never carry a SameSite=Lax cookie, so the
+//      extension has no other way to prove it is you
+//
+// BRIDGE_SECRET grants exactly one capability: installing a Steam session. It
+// is not a dashboard login and opens no other route.
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function authorised(req: NextRequest): Promise<boolean> {
+  const cookie = req.cookies.get(COOKIE_NAME)?.value;
+  if (cookie && (await verifySessionToken(cookie))) return true;
+
+  const secret = process.env.BRIDGE_SECRET;
+  // A short or unset secret must never authorise anything.
+  if (!secret || secret.length < 24) return false;
+  const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i);
+  return !!m && constantTimeEqual(m[1].trim(), secret);
+}
+
 // steamLoginSecure is "<steamid>||<jwt>", usually URL-encoded as %7C%7C.
 const COOKIE_RE = /^\s*(\d{17})(?:\|\||%7C%7C)([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\s*$/;
 
 export const POST = withApiErrors(async (req: NextRequest) => {
+  if (!(await authorised(req))) {
+    return NextResponse.json({ error: 'unauthorised' }, { status: 401 });
+  }
   const { bot, cookie, sessionid } = await req.json();
 
   if (!bot || botByKey(bot)?.kind !== 'orders') {

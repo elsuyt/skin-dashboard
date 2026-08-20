@@ -289,14 +289,16 @@ export default function BestDealsPage() {
                                 onClick={() => toggle(g.key)}
                                 aria-expanded={isOpen}
                                 aria-label={`${isOpen ? 'Hide' : 'Show'} ${g.alternatives.length} other listing${g.alternatives.length === 1 ? '' : 's'} for ${g.watch.name}`}
-                                className="cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                                // 44x44 hit area (the accessibility minimum) with a
+                                // negative margin so the row's layout is unchanged.
+                                className="-m-3 grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground transition-colors hover:text-foreground [touch-action:manipulation]"
                               >
                                 {isOpen
                                   ? <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
                                   : <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />}
                               </button>
                             ) : (
-                              <span className="w-5" aria-hidden="true" />
+                              <span className="w-5 shrink-0" aria-hidden="true" />
                             )}
                             <SkinThumb image={g.watch.image} name={g.watch.name} />
                             <div className="min-w-0">

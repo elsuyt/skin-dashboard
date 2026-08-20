@@ -8,6 +8,7 @@ import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo } from '@/components/SiteLogo';
 import { SkinPicker } from '@/components/SkinPicker';
 import { ActivityFeed } from '@/components/ActivityFeed';
+import { OpenAllLinks } from '@/components/OpenAllLinks';
 import {
   Page, PageHead, TableWrap, Th, Empty, Skeleton, Card, inputClass, btnPrimary,
 } from '@/components/ui';
@@ -93,6 +94,11 @@ export default function WatchlistsPage() {
     return true;
   });
 
+  // Built from the FILTERED rows, not the whole list — narrow with the filters
+  // first, then open, rather than launching 60-odd tabs every time.
+  const csmoneyUrls = filtered.map(csmoneyLink);
+  const tradeitUrls = filtered.map(tradeitLink);
+
   return (
     <Page>
       <PageHead
@@ -163,6 +169,20 @@ export default function WatchlistsPage() {
           </p>
         </form>
       </Card>
+
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/40 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium">Open on the marketplaces</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Opens the {filtered.length} skin{filtered.length === 1 ? '' : 's'} shown below, in batches of 6 a few seconds apart so the
+            sites don&apos;t throttle you. Narrow with the filters first if that&apos;s too many.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <OpenAllLinks label="CS.MONEY" links={csmoneyUrls} />
+          <OpenAllLinks label="Tradeit" links={tradeitUrls} />
+        </div>
+      </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2.5">
         <input value={floatFilter} onChange={(e) => setFloatFilter(e.target.value)} placeholder="filter: max float" inputMode="decimal" className={`${inputClass} w-40 tabular`} />

@@ -12,7 +12,7 @@ import {
 import type { CartItem, BuyingConfig, BotEvent } from '@/lib/types';
 import {
   ShoppingCartIcon, TrashIcon, ArrowTopRightOnSquareIcon,
-  ExclamationTriangleIcon, LockClosedIcon, BanknotesIcon,
+  ExclamationTriangleIcon, LockClosedIcon, BanknotesIcon, ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
@@ -31,6 +31,8 @@ export default function CartPage() {
   const [armed, setArmed] = useState(false);
   const [queued, setQueued] = useState(false);
   const [events, setEvents] = useState<BotEvent[]>([]);
+  const [busyUntil, setBusyUntil] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
     try {
@@ -47,15 +49,18 @@ export default function CartPage() {
     }
   }
 
+  // Poll hard for a couple of minutes after a checkout — the bot applies it on
+  // its own ~30s cycle, and waiting 15s per refresh to find out what happened
+  // is exactly the lag that sends you to Telegram instead.
   useEffect(() => {
     setItems(null);
     setArmed(false);
     setQueued(false);
     load();
-    const id = setInterval(load, 15000);
+    const id = setInterval(load, busyUntil && Date.now() < busyUntil ? 4000 : 15000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botKey]);
+  }, [botKey, busyUntil]);
 
   async function remove(key: string) {
     await api.removeFromCart(botKey, key);
@@ -75,7 +80,8 @@ export default function CartPage() {
       await api.checkout(botKey);
       setArmed(false);
       setQueued(true);
-      setTimeout(load, 6000);
+      setBusyUntil(Date.now() + 120000); // fast-poll window
+      setTimeout(load, 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -98,7 +104,17 @@ export default function CartPage() {
         count={items?.length}
         subtitle="Items staged on the bot, not yet bought. Checkout runs the bot's own buy loop — the same one the Telegram confirm uses, with the same caps."
         actions={
-          list.length ? (
+          <>
+            <button
+              onClick={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
+              disabled={refreshing}
+              className={btnGhost}
+              title="Re-read the bot's latest state"
+            >
+              <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+              Refresh
+            </button>
+            {list.length ? (
             confirmClear ? (
               <span className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Remove all {list.length}?</span>
@@ -114,8 +130,8 @@ export default function CartPage() {
                 <TrashIcon className="h-4 w-4" aria-hidden="true" />
                 Remove all
               </button>
-            )
-          ) : undefined
+            )) : null}
+          </>
         }
       />
 
@@ -204,7 +220,14 @@ export default function CartPage() {
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-3">
                           <SkinThumb image={it.image} name={it.name} />
-                          <span className="truncate font-medium">{it.name}</span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{it.name}</p>
+                            {it.lastError && (
+                              <p className="truncate text-xs text-warning" title={it.lastError}>
+                                last attempt: {it.lastError}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-2.5"><SiteLogo site={it.site} /></td>
@@ -219,6 +242,13 @@ export default function CartPage() {
                           <Pill tone="warning">over cap</Pill>
                         ) : buyingOff ? (
                           <Pill tone="destructive">blocked</Pill>
+                        ) : it.lastError ? (
+                          // It failed last time for a reason that looked
+                          // temporary, so it will be retried — but saying
+                          // "will buy" here would be over-confident.
+                          <span title={it.lastError}>
+                            <Pill tone="warning">retrying</Pill>
+                          </span>
                         ) : (
                           <Pill tone="success">will buy</Pill>
                         )}

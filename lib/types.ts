@@ -67,6 +67,11 @@ export interface CartItem {
   url: string | null;
   canBuy: boolean;
   addedAt: number;
+  // Set when a checkout attempt on this item failed for a reason that looked
+  // temporary. A conclusive "gone" failure unstages the item instead, so if
+  // this is set the bot still intends to retry it.
+  lastError?: string | null;
+  lastErrorAt?: number | null;
   image?: string | null; // added by the API layer, see WatchItem.image
 }
 

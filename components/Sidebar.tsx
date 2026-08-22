@@ -8,6 +8,7 @@ import {
   BanknotesIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
+  ArchiveBoxIcon,
   ArrowRightStartOnRectangleIcon,
   Bars3Icon,
   XMarkIcon,
@@ -27,6 +28,7 @@ const SECTIONS = [
       { href: '/cart', label: 'Cart', icon: ShoppingCartIcon },
       { href: '/orders', label: 'Buy orders', icon: BanknotesIcon },
       { href: '/purchases', label: 'Purchases', icon: ShoppingBagIcon },
+      { href: '/inventory', label: 'Inventory', icon: ArchiveBoxIcon },
     ],
   },
 ];

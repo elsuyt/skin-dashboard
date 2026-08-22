@@ -2,11 +2,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { BOTS, ACCOUNTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
+import { CartBar } from '@/components/CartBar';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo, SteamMark } from '@/components/SiteLogo';
 import { Page, PageHead, StatCard, TableWrap, Th, Empty, Skeleton, Pill, inputClass } from '@/components/ui';
-import type { WatchMatch, WatchItem } from '@/lib/types';
+import type { WatchMatch, WatchItem, CartItem, BuyingConfig } from '@/lib/types';
 import {
   ArrowTopRightOnSquareIcon, FunnelIcon, XMarkIcon, SparklesIcon, TagIcon,
   ShoppingCartIcon, CheckIcon, ChevronRightIcon, ChevronDownIcon, SwatchIcon,
@@ -67,13 +68,46 @@ export default function BestDealsPage() {
   const [maxSteamPct, setMaxSteamPct] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [staged, setStaged] = useState<Set<string>>(new Set());
+  // Cart of whichever bot you last staged from. The deals list spans both
+  // snipers, but a cart belongs to one bot, so mixing them would produce a
+  // checkout that silently only half-applies.
+  const [cartBot, setCartBot] = useState<string>(WATCHLIST_BOTS[0].key);
+  const [carts, setCarts] = useState<Record<string, CartItem[]>>({});
+  const [buyingByBot, setBuyingByBot] = useState<Record<string, BuyingConfig | null>>({});
+  const [checkoutQueued, setCheckoutQueued] = useState(false);
+  // A staged item only appears once the bot has polled (≤30s) and pushed back
+  // (≤30s). Without a faster window the page looked dead for up to a minute
+  // after every Add, which is most of why the cart felt broken.
+  const [boostUntil, setBoostUntil] = useState(0);
 
   async function addToCart(g: Group, m: WatchMatch) {
     setStaged((prev) => new Set(prev).add(m.matchId));
+    setCartBot(g.bot);
+    setBoostUntil(Date.now() + 90000);
     try {
       await api.addToCart(g.bot, g.watch.id, m.matchId);
     } catch (e) {
       setStaged((prev) => { const n = new Set(prev); n.delete(m.matchId); return n; });
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeFromCart(key: string) {
+    setBoostUntil(Date.now() + 60000);
+    try {
+      await api.removeFromCart(cartBot, key);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function checkout() {
+    setCheckoutQueued(true);
+    setBoostUntil(Date.now() + 180000);
+    try {
+      await api.checkout(cartBot);
+    } catch (e) {
+      setCheckoutQueued(false);
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -85,6 +119,8 @@ export default function BestDealsPage() {
         const results = await Promise.all(WATCHLIST_BOTS.map((b) => api.getWatchlist(b.key)));
         if (cancelled) return;
         const next: Group[] = [];
+        const nextCarts: Record<string, CartItem[]> = {};
+        const nextBuying: Record<string, BuyingConfig | null> = {};
         let hidden = 0;
 
         results.forEach((state, i) => {
@@ -98,6 +134,8 @@ export default function BestDealsPage() {
           // same string recordMatches() uses for matchId, so this compares
           // like for like without inventing a second identity scheme.
           const inCart = new Set((state.cart ?? []).map((c) => c.key));
+          nextCarts[bot.key] = state.cart ?? [];
+          nextBuying[bot.key] = state.buying ?? null;
 
           for (const watch of state.watches) {
             if (!watch.enabled) continue;
@@ -131,6 +169,15 @@ export default function BestDealsPage() {
 
         next.sort((a, b) => (a.steamPct ?? 999) - (b.steamPct ?? 999));
         setGroups(next);
+        setCarts(nextCarts);
+        setBuyingByBot(nextBuying);
+        // The bot has confirmed the stage, so drop the optimistic marker and
+        // let the real cart drive the "in cart" state from here on.
+        const confirmed = new Set(Object.values(nextCarts).flat().map((c) => c.key));
+        setStaged((prev) => {
+          const remaining = new Set([...prev].filter((id) => !confirmed.has(id)));
+          return remaining.size === prev.size ? prev : remaining;
+        });
         setHiddenCount(hidden);
         setNotConfigured(false);
         setError('');
@@ -141,9 +188,10 @@ export default function BestDealsPage() {
       }
     }
     load();
-    const id = setInterval(load, 30000);
+    const fast = boostUntil && Date.now() < boostUntil;
+    const id = setInterval(load, fast ? 3000 : 30000);
     return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  }, [boostUntil]);
 
   const filtered = useMemo(() => {
     if (!groups) return [];
@@ -175,11 +223,22 @@ export default function BestDealsPage() {
   }
 
   function stageCell(g: Group, m: WatchMatch) {
-    const canStage = !!m.cartable;
-    if (!canStage) {
-      return g.stale
-        ? <span className="text-xs text-muted-foreground/60" title="Too old to stage — the bot no longer holds a buyable listing. It returns when a sweep finds it again.">stale</span>
-        : <span className="text-xs text-muted-foreground/50" title="This market has no purchase path">—</span>;
+    if (!m.cartable) {
+      return <span className="text-xs text-muted-foreground/50" title="This market has no purchase path — open it and buy there">—</span>;
+    }
+    // `stageable === false` means the bot has dropped the listing (over an hour
+    // since the sweep that found it) and would refuse the add. Offering the
+    // button anyway is what made the cart look broken, so say so instead.
+    // `undefined` means the bot predates this flag — allow the attempt.
+    if (m.stageable === false) {
+      return (
+        <span
+          className="text-xs text-muted-foreground/60"
+          title="Expired — the bot dropped this listing an hour after it was seen, so it has almost certainly been bought. It comes back if a sweep finds it again."
+        >
+          expired
+        </span>
+      );
     }
     if (g.inCart.has(m.matchId) || staged.has(m.matchId)) {
       return (
@@ -414,6 +473,14 @@ export default function BestDealsPage() {
           {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} had no match in the last sweep and {hiddenCount === 1 ? 'is' : 'are'} hidden here.
         </p>
       )}
+      <CartBar
+        items={carts[cartBot] ?? []}
+        buying={buyingByBot[cartBot] ?? null}
+        pending={[...staged].length}
+        onRemove={removeFromCart}
+        onCheckout={checkout}
+        queued={checkoutQueued}
+      />
     </Page>
   );
 }

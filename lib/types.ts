@@ -29,10 +29,18 @@ export interface WatchMatch {
   thirdLowPrice: number | null;
   url: string | null;
   seenAt: number; // epoch ms
-  // True when the bot is still holding enough of this listing to stage it —
-  // a confirmed match carrying a buyRef. False means "Add to cart" would
-  // find nothing, so the button is not offered.
+  // True when this market HAS a purchase path at all (csfloat/dmarket/lisskins
+  // yes, tradeit no). It says nothing about whether this particular listing can
+  // still be staged — see `stageable`.
   cartable?: boolean;
+  // True when Add would actually succeed right now. The bot drops the full
+  // listing an hour after the sweep that found it, but `matches` never expires,
+  // so a cartable match can still be unstageable. Treating `cartable` as if it
+  // meant this is what made the cart look broken: the button rendered, the
+  // click enqueued, and the bot dropped it with "no fresh listing held".
+  // Absent (undefined) on states pushed by a bot older than 2026-08-22 —
+  // treat that as "unknown, allow the attempt" rather than blocking.
+  stageable?: boolean;
 }
 
 // One completed purchase, either auto-buy or a manual confirm. `via`

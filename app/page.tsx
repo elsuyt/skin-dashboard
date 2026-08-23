@@ -18,6 +18,14 @@ const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 // The bot only holds a listing it can still stage for 60 minutes (state.cjs's
 // getMatchListing TTL). Past that the listing is very likely gone from the
 // market, so the row is shown as a stale sighting rather than a live deal.
+// A live listing is re-confirmed by every sweep, and a sweep takes ~5 minutes,
+// so anything not seen for 30 minutes has missed roughly six of them. The bot
+// clears matches itself the moment a successful sweep stops finding them; this
+// is the second line of defence for when the bot is DOWN, where its last state
+// freezes and would otherwise be shown as current deals indefinitely.
+// Measured before both fixes: 13 of 29 watches were showing listings last seen
+// over 30 minutes earlier, the oldest 34 hours.
+const DEAD_AFTER_MS = 30 * 60 * 1000;
 const STALE_AFTER_MS = 60 * 60 * 1000;
 
 interface Group {
@@ -61,6 +69,7 @@ function steamTone(p: number | null) {
 export default function BestDealsPage() {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
+  const [deadCount, setDeadCount] = useState(0);
   const [notConfigured, setNotConfigured] = useState(false);
   const [error, setError] = useState('');
   const [account, setAccount] = useState<string>('All');
@@ -119,6 +128,7 @@ export default function BestDealsPage() {
         const results = await Promise.all(WATCHLIST_BOTS.map((b) => api.getWatchlist(b.key)));
         if (cancelled) return;
         const next: Group[] = [];
+        let dead = 0;
         const nextCarts: Record<string, CartItem[]> = {};
         const nextBuying: Record<string, BuyingConfig | null> = {};
         let hidden = 0;
@@ -139,7 +149,11 @@ export default function BestDealsPage() {
 
           for (const watch of state.watches) {
             if (!watch.enabled) continue;
-            const list = (byWatch.get(watch.id) ?? []).slice().sort((a, b) => a.price - b.price);
+            const all = (byWatch.get(watch.id) ?? []).slice().sort((a, b) => a.price - b.price);
+            // A listing nobody has seen in half an hour is not a deal, it is a
+            // memory. Bought-out listings used to sit here indefinitely.
+            const list = all.filter((m) => Date.now() - m.seenAt <= DEAD_AFTER_MS);
+            if (all.length && !list.length) dead++;
             if (!list.length) { hidden++; continue; }
 
             const best = list[0];
@@ -179,6 +193,7 @@ export default function BestDealsPage() {
           return remaining.size === prev.size ? prev : remaining;
         });
         setHiddenCount(hidden);
+        setDeadCount(dead);
         setNotConfigured(false);
         setError('');
       } catch (e) {
@@ -471,6 +486,7 @@ export default function BestDealsPage() {
       {groups && hiddenCount > 0 && (
         <p className="mt-3 text-xs text-muted-foreground/60">
           {hiddenCount} enabled watch{hiddenCount === 1 ? '' : 'es'} had no match in the last sweep and {hiddenCount === 1 ? 'is' : 'are'} hidden here.
+          {deadCount > 0 && <> {deadCount} of {deadCount === 1 ? 'them was' : 'those were'} last seen over 30 minutes ago — almost certainly bought by someone else.</>}
         </p>
       )}
       <CartBar

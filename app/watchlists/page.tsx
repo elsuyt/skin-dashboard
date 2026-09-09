@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { BOTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
-import { csmoneyLink, tradeitLink } from '@/lib/links';
+import { csmoneyLink, tradeitLink, dmarketLink, lisskinsLink } from '@/lib/links';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo } from '@/components/SiteLogo';
@@ -98,6 +98,8 @@ export default function WatchlistsPage() {
   // first, then open, rather than launching 60-odd tabs every time.
   const csmoneyUrls = filtered.map(csmoneyLink);
   const tradeitUrls = filtered.map(tradeitLink);
+  const dmarketUrls = filtered.map(dmarketLink);
+  const lisskinsUrls = filtered.map(lisskinsLink);
 
   return (
     <Page>
@@ -181,6 +183,8 @@ export default function WatchlistsPage() {
         <div className="flex flex-wrap items-center gap-4">
           <OpenAllLinks label="CS.MONEY" links={csmoneyUrls} />
           <OpenAllLinks label="Tradeit" links={tradeitUrls} />
+          <OpenAllLinks label="DMarket" links={dmarketUrls} />
+          <OpenAllLinks label="LIS-Skins" links={lisskinsUrls} />
         </div>
       </div>
 
@@ -245,6 +249,12 @@ export default function WatchlistsPage() {
                           </a>
                           <a href={tradeitLink(w)} target="_blank" rel="noreferrer" title="Search this skin on Tradeit.gg (name search only)" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
                             Tradeit <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden="true" />
+                          </a>
+                          <a href={dmarketLink(w)} target="_blank" rel="noreferrer" title="Open on DMarket with this watch's name, exterior and max price (no float filter — DMarket drops it from the URL)" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
+                            DMarket <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden="true" />
+                          </a>
+                          <a href={lisskinsLink(w)} target="_blank" rel="noreferrer" title="Open this skin's LIS-Skins page (the slug is the only filter it accepts)" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
+                            LIS-Skins <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden="true" />
                           </a>
                         </div>
                       </td>

@@ -31,3 +31,51 @@ export function tradeitLink(w: WatchItem): string {
   q.set('search', hashName);
   return `https://tradeit.gg/csgo/store?${q.toString()}`;
 }
+
+// DMarket's own marketplace filters, read off a real filtered URL rather than
+// guessed (checked live 2026-09-09 by driving their filter panel and watching
+// what the site kept in the address bar):
+//
+//   title      loose text search. The `|` is stripped — DMarket's search box
+//              never emits one, and the site matches fine without it. The
+//              StatTrak™ prefix DOES work here and is how StatTrak is
+//              narrowed, since the Quality filter is not URL-addressable.
+//   exterior   the exterior name LOWERCASED VERBATIM — `minimal wear`, not
+//              `minimal-wear`. This one is a trap: DMarket takes a
+//              comma-separated list here and silently ignores any token it
+//              does not know, so a slugified `minimal-wear` loads a page with
+//              no exterior filter at all and no error — it just quietly shows
+//              every wear. `field-tested` only appears to work as a slug
+//              because the real name already has that hyphen. Verified by
+//              clicking the site's own checkboxes and reading back what it
+//              put in the address bar.
+//   price-to   max price in DOLLARS (not cents, unlike DMarket's API).
+//
+// Two things deliberately absent, because DMarket strips them from the URL:
+// there is no float param (`float-to` was dropped on load, verified), and sort
+// order is held in site state, so these open unsorted. The float ceiling still
+// has to be set by hand on the page — same caveat the Tradeit link already has.
+export function dmarketLink(w: WatchItem): string {
+  const title = `${w.stattrak ? 'StatTrak™ ' : ''}${w.name}`.replace(/\s*\|\s*/g, ' ');
+  const q = new URLSearchParams();
+  q.set('title', title);
+  q.set('exterior', w.exterior.toLowerCase());
+  q.set('price-to', String(w.maxPrice));
+  return `https://dmarket.com/ingame-items/item-list/csgo-skins?${q.toString()}`;
+}
+
+// LIS-Skins per-item category page — a straight port of `lisskinsUrl()` in
+// skin-sniper/src/util.cjs, which is the builder the bot's own alerts use.
+//
+// The slug is the WHOLE addressing scheme: LIS-Skins silently ignores a
+// `?search=` query param (confirmed there on 2026-07-27), so there is no name,
+// price or float parameter to add. Don't invent one — a param this site drops
+// looks like a working filter while showing everything.
+function lisSlug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+export function lisskinsLink(w: WatchItem): string {
+  const prefix = w.stattrak ? 'stattrak-' : '';
+  return `https://lis-skins.com/market/csgo/${prefix}${lisSlug(w.name)}-${lisSlug(w.exterior)}/`;
+}

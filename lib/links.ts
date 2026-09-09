@@ -79,3 +79,31 @@ export function lisskinsLink(w: WatchItem): string {
   const prefix = w.stattrak ? 'stattrak-' : '';
   return `https://lis-skins.com/market/csgo/${prefix}${lisSlug(w.name)}-${lisSlug(w.exterior)}/`;
 }
+
+// Steam Community Market, by exact market_hash_name. This is a PATH segment,
+// so it is encodeURIComponent'd rather than built with URLSearchParams — the
+// latter would emit `+` for spaces, which is only correct in a query string.
+//
+// Caveat worth knowing before "fixing" this (checked live 2026-09-09): Steam is
+// rolling out a grouped market UI, and under it every wear of a skin redirects
+// to ONE shared page (all five exteriors of M4A4 | Etch Lord, StatTrak or not,
+// answered with the same `/listings/730/G1810208D093004`), where the exterior
+// is a tab rather than part of the URL. So on the new UI this opens the right
+// skin but not necessarily the right wear.
+//
+// The market SEARCH page was tried instead and is worse, not better: its
+// `category_730_Exterior[]=tag_WearCategory2` / `category_730_Quality[]=
+// tag_strange` params are honoured by Steam's own search data endpoint but
+// ignored by the new UI (verified — it rendered them with zero filters
+// checked), and it returns a grouped card with no per-wear price. The
+// hash-name URL at least still carries the full variant, so it lands exactly
+// right for anyone on the classic UI. Don't swap it for a search link.
+//
+// There is deliberately no price ceiling here. Steam has no max-price param,
+// and the watch's `maxPrice` is USD while these Steam wallets are PHP — a
+// number carried across would be wrong by ~61x. See the currency note in the
+// Desktop CLAUDE.md.
+export function steamLink(w: WatchItem): string {
+  const hashName = `${w.stattrak ? 'StatTrak™ ' : ''}${w.name} (${w.exterior})`;
+  return `https://steamcommunity.com/market/listings/730/${encodeURIComponent(hashName)}`;
+}

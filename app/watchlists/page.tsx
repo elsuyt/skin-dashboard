@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { BOTS } from '@/lib/bots';
 import { api, NotConfiguredError } from '@/lib/api-client';
-import { csmoneyLink, tradeitLink, dmarketLink, lisskinsLink } from '@/lib/links';
+import { csmoneyLink, tradeitLink, dmarketLink, lisskinsLink, steamLink } from '@/lib/links';
 import { SetupBanner, ErrorBanner } from '@/components/StateBanner';
 import { SkinThumb } from '@/components/SkinThumb';
 import { SiteLogo } from '@/components/SiteLogo';
@@ -100,6 +100,7 @@ export default function WatchlistsPage() {
   const tradeitUrls = filtered.map(tradeitLink);
   const dmarketUrls = filtered.map(dmarketLink);
   const lisskinsUrls = filtered.map(lisskinsLink);
+  const steamUrls = filtered.map(steamLink);
 
   return (
     <Page>
@@ -185,6 +186,7 @@ export default function WatchlistsPage() {
           <OpenAllLinks label="Tradeit" links={tradeitUrls} />
           <OpenAllLinks label="DMarket" links={dmarketUrls} />
           <OpenAllLinks label="LIS-Skins" links={lisskinsUrls} />
+          <OpenAllLinks label="Steam" links={steamUrls} />
         </div>
       </div>
 
@@ -255,6 +257,9 @@ export default function WatchlistsPage() {
                           </a>
                           <a href={lisskinsLink(w)} target="_blank" rel="noreferrer" title="Open this skin's LIS-Skins page (the slug is the only filter it accepts)" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
                             LIS-Skins <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden="true" />
+                          </a>
+                          <a href={steamLink(w)} target="_blank" rel="noreferrer" title="Open this skin on the Steam Community Market (Steam's new grouped UI may land on the skin rather than this exact wear)" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
+                            Steam <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden="true" />
                           </a>
                         </div>
                       </td>

@@ -185,7 +185,7 @@ export default function WatchlistsPage() {
           <OpenAllLinks label="CS.MONEY" links={csmoneyUrls} />
           <OpenAllLinks label="Tradeit" links={tradeitUrls} />
           <OpenAllLinks label="DMarket" links={dmarketUrls} />
-          <OpenAllLinks label="LIS-Skins" links={lisskinsUrls} />
+          <OpenAllLinks label="LIS-Skins" links={lisskinsUrls} batchSize={1} gapMs={5000} />
           <OpenAllLinks label="Steam" links={steamUrls} />
         </div>
       </div>

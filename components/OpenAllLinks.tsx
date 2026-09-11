@@ -4,27 +4,37 @@ import { ArrowTopRightOnSquareIcon, ClipboardDocumentIcon, StopIcon, CheckIcon }
 
 // Bulk "open every link" button.
 //
-// Pacing is copied from the bot's own csmoney-links.cjs page and is not
-// arbitrary: 6 tabs every 3.5s, because firing 50-odd requests at a
+// Default pacing is copied from the bot's own csmoney-links.cjs page and is
+// not arbitrary: 6 tabs every 3.5s, because firing 50-odd requests at a
 // Cloudflare-protected host at once is a good way to get challenged or
 // throttled. Do not raise it "to be faster".
+//
+// batchSize/gapMs are overridable per market because they don't all tolerate
+// the same pace — LIS-Skins gets 1 tab every 5s from the watchlists page
+// (reported live 2026-09-11: the default 6-at-once was tripping its
+// Cloudflare challenge). Don't silently reuse one market's override for
+// another; tune each against what that site actually does.
 //
 // Popup blockers are the real failure mode here. Only the tabs opened in the
 // first click's gesture window are reliably allowed; later batches fire from a
 // timer and browsers commonly block them. window.open() returns null when
 // blocked, so that is detected and reported rather than silently doing nothing,
 // and the Copy button is always there as the fallback.
-const BATCH_SIZE = 6;
-const BATCH_GAP_MS = 3500;
+const DEFAULT_BATCH_SIZE = 6;
+const DEFAULT_BATCH_GAP_MS = 3500;
 
 export function OpenAllLinks({
   label,
   links,
   className = '',
+  batchSize = DEFAULT_BATCH_SIZE,
+  gapMs = DEFAULT_BATCH_GAP_MS,
 }: {
   label: string;
   links: string[];
   className?: string;
+  batchSize?: number;
+  gapMs?: number;
 }) {
   const [opened, setOpened] = useState(0);
   const [running, setRunning] = useState(false);
@@ -51,7 +61,7 @@ export function OpenAllLinks({
     let i = 0;
     const step = () => {
       if (cancelled.current) return;
-      const batch = links.slice(i, i + BATCH_SIZE);
+      const batch = links.slice(i, i + batchSize);
       if (!batch.length) { setRunning(false); return; }
 
       let blockedHere = 0;
@@ -63,7 +73,7 @@ export function OpenAllLinks({
 
       i += batch.length;
       setOpened(i);
-      timer.current = setTimeout(step, BATCH_GAP_MS);
+      timer.current = setTimeout(step, gapMs);
     };
     step();
   }
@@ -85,7 +95,9 @@ export function OpenAllLinks({
       <button
         onClick={openAll}
         disabled={disabled || running}
-        title={`Opens in batches of ${BATCH_SIZE}, ${BATCH_GAP_MS / 1000}s apart, to avoid tripping the site's bot check`}
+        title={batchSize === 1
+          ? `Opens one tab every ${gapMs / 1000}s, to avoid tripping the site's bot check`
+          : `Opens in batches of ${batchSize}, ${gapMs / 1000}s apart, to avoid tripping the site's bot check`}
         className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-default disabled:opacity-50"
       >
         <ArrowTopRightOnSquareIcon className="h-4 w-4" aria-hidden="true" />

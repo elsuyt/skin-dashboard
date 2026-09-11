@@ -64,20 +64,32 @@ export function dmarketLink(w: WatchItem): string {
   return `https://dmarket.com/ingame-items/item-list/csgo-skins?${q.toString()}`;
 }
 
-// LIS-Skins per-item category page — a straight port of `lisskinsUrl()` in
-// skin-sniper/src/util.cjs, which is the builder the bot's own alerts use.
+// LIS-Skins per-item category page — the slug is a straight port of
+// `lisskinsUrl()` in skin-sniper/src/util.cjs, which is the builder the bot's
+// own alerts use. The slug is still the WHOLE addressing scheme for the name
+// and exterior: LIS-Skins silently ignores a `?search=` query param
+// (confirmed there on 2026-07-27), so name/exterior only ever land through
+// the slug, never a param.
 //
-// The slug is the WHOLE addressing scheme: LIS-Skins silently ignores a
-// `?search=` query param (confirmed there on 2026-07-27), so there is no name,
-// price or float parameter to add. Don't invent one — a param this site drops
-// looks like a working filter while showing everything.
+// float_to / price_to (and float_from / price_from) are a different thing and
+// DO work as real query params on top of that slug — confirmed live
+// 2026-09-12 by filling the site's own Float/Price filter fields and reading
+// what it kept in the address bar, then round-tripped by loading that exact
+// URL cold: every returned row was inside the bound (float_to=0.27 returned
+// rows 0.240-0.269, nothing above). Loading `?search=` and loading these
+// filter params are not the same claim — the first is still false, the
+// second is now verified true. Only the "to" ceilings are set here since a
+// watch only carries a max float/price, no floor.
 function lisSlug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
 export function lisskinsLink(w: WatchItem): string {
   const prefix = w.stattrak ? 'stattrak-' : '';
-  return `https://lis-skins.com/market/csgo/${prefix}${lisSlug(w.name)}-${lisSlug(w.exterior)}/`;
+  const q = new URLSearchParams();
+  q.set('price_to', String(w.maxPrice));
+  if (w.maxFloat != null) q.set('float_to', String(w.maxFloat));
+  return `https://lis-skins.com/market/csgo/${prefix}${lisSlug(w.name)}-${lisSlug(w.exterior)}/?${q.toString()}`;
 }
 
 // Steam Community Market, by exact market_hash_name. This is a PATH segment,

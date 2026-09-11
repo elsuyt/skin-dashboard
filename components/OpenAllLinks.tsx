@@ -29,12 +29,20 @@ export function OpenAllLinks({
   className = '',
   batchSize = DEFAULT_BATCH_SIZE,
   gapMs = DEFAULT_BATCH_GAP_MS,
+  note,
 }: {
   label: string;
   links: string[];
   className?: string;
   batchSize?: number;
   gapMs?: number;
+  // Persistent muted hint shown next to the buttons, regardless of run state.
+  // For a site whose real limit is unknown (LIS-Skins' 429 is Cloudflare's
+  // own site-wide rule, not something this component's pacing fully
+  // controls — each page load pulls in a dozen-plus subresources, so the
+  // click interval understates the actual request burst), say so rather
+  // than implying the pace is guaranteed to clear it.
+  note?: string;
 }) {
   const [opened, setOpened] = useState(0);
   const [running, setRunning] = useState(false);
@@ -138,6 +146,10 @@ export function OpenAllLinks({
         <span className="text-xs text-warning">
           Your browser blocked some tabs — allow pop-ups for this site, or use Copy.
         </span>
+      )}
+
+      {note && (
+        <span className="text-xs text-muted-foreground/70">{note}</span>
       )}
     </div>
   );

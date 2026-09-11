@@ -185,7 +185,13 @@ export default function WatchlistsPage() {
           <OpenAllLinks label="CS.MONEY" links={csmoneyUrls} />
           <OpenAllLinks label="Tradeit" links={tradeitUrls} />
           <OpenAllLinks label="DMarket" links={dmarketUrls} />
-          <OpenAllLinks label="LIS-Skins" links={lisskinsUrls} batchSize={1} gapMs={5000} />
+          <OpenAllLinks
+            label="LIS-Skins"
+            links={lisskinsUrls}
+            batchSize={1}
+            gapMs={10000}
+            note="Still rate-limited even at this pace? Use Copy and open a handful yourself with pauses — its Cloudflare limit is stricter than this button can guarantee."
+          />
           <OpenAllLinks label="Steam" links={steamUrls} />
         </div>
       </div>

@@ -2,14 +2,21 @@
 // Keep this file's field names in sync with dashboard-sync.cjs's payloads —
 // there is deliberately no code generation here, just discipline.
 
-export interface WatchItem {
-  id: string;
-  enabled: boolean;
+// The five fields every marketplace link builder in lib/links.ts actually
+// reads. WatchItem and ManualWatch both satisfy this structurally (they carry
+// more fields than this needs), so the link builders take this narrower type
+// and work unchanged for either kind of entry — no adapter object required.
+export interface LinkableSkin {
   name: string;
   exterior: string;
   stattrak: boolean;
   maxFloat: number | null;
   maxPrice: number;
+}
+
+export interface WatchItem extends LinkableSkin {
+  id: string;
+  enabled: boolean;
   sites: string[];
   // Added by the API layer from the local artwork snapshot, never by the bots.
   image?: string | null;
@@ -145,6 +152,20 @@ export interface OrdersState {
 // Commands the dashboard enqueues; the bot's sync script drains and applies
 // them on its own next tick, using the exact same functions its Telegram
 // commands already use — no new code path bypasses the existing safety guards.
+// A skin you're tracking by hand — "Manual checking" on the Watchlists page.
+// Deliberately NOT a WatchItem: it has no `enabled`/`sites` because no bot
+// ever sweeps it, and it is stored under its own Redis key (manual:watches,
+// see lib/manual-store.ts) that no bot reads or writes. Adding one here can
+// never feed a bot's watchlist or its auto-buy path — it only ever builds
+// "open on the marketplace" links with your own float/price ceilings baked
+// in, for you to check and buy by hand.
+export interface ManualWatch extends LinkableSkin {
+  id: string;
+  addedAt: number; // epoch ms, for stable sort order
+  // Added by the API layer from the local artwork snapshot, same as WatchItem.
+  image?: string | null;
+}
+
 export type Command =
   | { id: string; type: 'add-watch'; payload: Omit<WatchItem, 'id'> & { id?: string } }
   | { id: string; type: 'remove-watch'; payload: { id: string } }

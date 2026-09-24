@@ -1,4 +1,4 @@
-import type { WatchlistState, OrdersState, WatchItem } from './types';
+import type { WatchlistState, OrdersState, WatchItem, ManualWatch } from './types';
 
 // Thrown when the API reports Redis isn't wired up yet, so the UI can show a
 // calm "finish setup" state instead of a scary generic error.
@@ -23,6 +23,15 @@ export const api = {
     jsonFetch(`/api/watches?bot=${encodeURIComponent(bot)}&id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   updateWatch: (bot: string, id: string, patch: { maxFloat?: number | null; maxPrice?: number; enabled?: boolean }) =>
     jsonFetch(`/api/watches`, { method: 'PATCH', body: JSON.stringify({ bot, id, ...patch }) }),
+
+  // "Manual checking" list — no bot involved, so no `bot` param and no queue
+  // delay: an add/remove here is visible on the very next GET. See
+  // lib/manual-store.ts for why this can never reach a bot's auto-buy path.
+  getManualWatches: () => jsonFetch<{ watches: ManualWatch[] }>('/api/manual-watches'),
+  addManualWatch: (watch: Omit<ManualWatch, 'id' | 'addedAt'>) =>
+    jsonFetch<{ ok: true; watch: ManualWatch }>('/api/manual-watches', { method: 'POST', body: JSON.stringify({ watch }) }),
+  removeManualWatch: (id: string) =>
+    jsonFetch(`/api/manual-watches?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   getOrders: (bot: string) => jsonFetch<OrdersState>(`/api/orders?bot=${encodeURIComponent(bot)}`),
   placeOrder: (bot: string, orderId: string, targetCents: number, raiseCeiling?: boolean) =>

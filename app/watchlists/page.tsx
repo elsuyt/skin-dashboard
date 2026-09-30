@@ -12,30 +12,20 @@ import { OpenAllLinks } from '@/components/OpenAllLinks';
 import {
   Page, PageHead, TableWrap, Th, Empty, Skeleton, Card, inputClass, btnPrimary,
 } from '@/components/ui';
-import type { WatchItem, WatchMatch, BotEvent, ManualWatch } from '@/lib/types';
+import type { WatchItem, WatchMatch, BotEvent } from '@/lib/types';
 import { PlusIcon, TrashIcon, ArrowTopRightOnSquareIcon, ListBulletIcon } from '@heroicons/react/24/outline';
 
 const WATCHLIST_BOTS = BOTS.filter((b) => b.kind === 'watchlist');
 const EXTERIORS = ['Factory New', 'Minimal Wear', 'Field-Tested', 'Well-Worn', 'Battle-Scarred'];
 const ALL_SITES = ['csfloat', 'dmarket', 'lisskins', 'tradeit'];
 
-// A pseudo-"bot" key selecting the manual list instead of a real bot. Never
-// passed to a bot API call — every call site below branches on `isManual`
-// first and routes to the manual-watches endpoints instead. Can't collide
-// with a real bot key: BOTS' keys are plain slugs, this one deliberately
-// isn't shaped like one.
-const MANUAL_TAB = '__manual__';
-
-type AnyWatch = WatchItem | ManualWatch;
-
 function emptyForm() {
   return { name: '', exterior: 'Field-Tested', stattrak: false, maxFloat: '', maxPrice: '', sites: [...ALL_SITES] };
 }
 
 export default function WatchlistsPage() {
-  const [botKey, setBotKey] = useState<string>(WATCHLIST_BOTS[0].key);
-  const isManual = botKey === MANUAL_TAB;
-  const [watches, setWatches] = useState<AnyWatch[] | null>(null);
+  const [botKey, setBotKey] = useState(WATCHLIST_BOTS[0].key);
+  const [watches, setWatches] = useState<WatchItem[] | null>(null);
   const [matches, setMatches] = useState<Map<string, WatchMatch>>(new Map());
   const [updatedAt, setUpdatedAt] = useState(0);
   const [notConfigured, setNotConfigured] = useState(false);
@@ -49,16 +39,6 @@ export default function WatchlistsPage() {
 
   async function load() {
     try {
-      if (isManual) {
-        const state = await api.getManualWatches();
-        setWatches(state.watches);
-        setMatches(new Map());
-        setUpdatedAt(0);
-        setEvents([]);
-        setNotConfigured(false);
-        setError('');
-        return;
-      }
       const state = await api.getWatchlist(botKey);
       setWatches(state.watches);
       setMatches(new Map(state.matches.map((m) => [m.watchId, m])));
@@ -75,10 +55,6 @@ export default function WatchlistsPage() {
   useEffect(() => {
     setWatches(null);
     load();
-    // The manual list has no bot lag to poll for — an add/remove is visible
-    // on the very next GET, and nothing external ever changes it. Polling it
-    // every 20s would just be wasted requests.
-    if (isManual) return;
     const id = setInterval(load, 20000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,30 +65,17 @@ export default function WatchlistsPage() {
     if (!form.name.trim() || !form.maxPrice) return;
     setBusy(true);
     try {
-      if (isManual) {
-        await api.addManualWatch({
-          name: form.name.trim(),
-          exterior: form.exterior,
-          stattrak: form.stattrak,
-          maxFloat: form.maxFloat ? Number(form.maxFloat) : null,
-          maxPrice: Number(form.maxPrice),
-        });
-      } else {
-        await api.addWatch(botKey, {
-          name: form.name.trim(),
-          exterior: form.exterior,
-          stattrak: form.stattrak,
-          maxFloat: form.maxFloat ? Number(form.maxFloat) : null,
-          maxPrice: Number(form.maxPrice),
-          sites: form.sites,
-          enabled: true,
-        });
-      }
+      await api.addWatch(botKey, {
+        name: form.name.trim(),
+        exterior: form.exterior,
+        stattrak: form.stattrak,
+        maxFloat: form.maxFloat ? Number(form.maxFloat) : null,
+        maxPrice: Number(form.maxPrice),
+        sites: form.sites,
+        enabled: true,
+      });
       setForm(emptyForm());
-      // Manual writes land immediately (single reader/writer, no bot queue in
-      // between) — reload right away rather than guessing at a bot's cadence.
-      if (isManual) load();
-      else setTimeout(load, 3000);
+      setTimeout(load, 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -121,12 +84,6 @@ export default function WatchlistsPage() {
   }
 
   async function remove(id: string) {
-    if (isManual) {
-      if (!confirm('Remove this skin from your manual list?')) return;
-      await api.removeManualWatch(id);
-      load();
-      return;
-    }
     if (!confirm('Remove this watch? The bot will stop checking it on its next sync.')) return;
     await api.removeWatch(botKey, id);
     setTimeout(load, 3000);
@@ -160,12 +117,10 @@ export default function WatchlistsPage() {
       <PageHead
         title="Watchlists"
         count={watches?.length}
-        subtitle={isManual
-          ? 'Your own list — nothing here is watched by a bot or fed to auto-buy. It only builds the "open on the marketplace" links below, with your own float/price ceilings already filled in.'
-          : 'Edits are queued and applied by the bot on its own next cycle — nothing here takes effect instantly, by design.'}
+        subtitle="Edits are queued and applied by the bot on its own next cycle — nothing here takes effect instantly, by design."
       />
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
+      <div className="mt-6 flex flex-wrap gap-2">
         {WATCHLIST_BOTS.map((b) => (
           <button
             key={b.key}
@@ -179,18 +134,6 @@ export default function WatchlistsPage() {
             {b.label} <span className="text-muted-foreground/70">· {b.account}</span>
           </button>
         ))}
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-        <button
-          onClick={() => setBotKey(MANUAL_TAB)}
-          title="Your own list, not watched by any bot — just for building filtered marketplace links"
-          className={`cursor-pointer rounded-lg px-3.5 py-2 text-sm font-medium transition-colors ${
-            isManual
-              ? 'bg-surface-hover text-foreground ring-1 ring-border-strong'
-              : 'text-muted-foreground hover:bg-surface hover:text-foreground'
-          }`}
-        >
-          Manual checking <span className="text-muted-foreground/70">· no bot</span>
-        </button>
       </div>
 
       {notConfigured && <div className="mt-6"><SetupBanner /></div>}
@@ -235,9 +178,7 @@ export default function WatchlistsPage() {
             </div>
           </div>
           <p className="mt-3 text-xs text-muted-foreground/70">
-            {isManual
-              ? 'Not watched by anything — this only builds the marketplace links below with these ceilings. Added instantly.'
-              : 'Watches every market by default. The bot picks it up on its next sync, within ~90s.'}
+            Watches every market by default. The bot picks it up on its next sync, within ~90s.
           </p>
         </form>
       </Card>
@@ -295,8 +236,8 @@ export default function WatchlistsPage() {
                   <Th>Skin</Th>
                   <Th right>Ceiling</Th>
                   <Th right>Float cap</Th>
-                  {!isManual && <Th>Current match</Th>}
-                  <Th>{isManual ? 'Open on' : 'Compare'}</Th>
+                  <Th>Current match</Th>
+                  <Th>Compare</Th>
                   <Th right />
                 </tr>
               </thead>
@@ -320,7 +261,7 @@ export default function WatchlistsPage() {
                             <div className="flex items-center gap-1.5">
                               <span className="truncate font-medium">{w.name}</span>
                               {w.stattrak && <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">ST</span>}
-                              {'enabled' in w && !w.enabled && <span className="rounded bg-surface-hover px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">off</span>}
+                              {!w.enabled && <span className="rounded bg-surface-hover px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">off</span>}
                             </div>
                             <p className="text-xs text-muted-foreground">{w.exterior}</p>
                           </div>
@@ -328,23 +269,21 @@ export default function WatchlistsPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right font-medium tabular">${w.maxPrice.toFixed(2)}</td>
                       <td className="px-4 py-2.5 text-right text-muted-foreground tabular">{w.maxFloat ?? 'any'}</td>
-                      {!isManual && (
-                        <td className="px-4 py-2.5">
-                          {m ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium tabular">${m.price.toFixed(2)}</span>
-                              {m.float != null && (
-                                <span className={isFloatHighlight ? 'rounded bg-success/20 px-1.5 py-0.5 text-xs font-semibold text-success tabular' : 'text-xs text-muted-foreground tabular'}>
-                                  {m.float.toFixed(4)}
-                                </span>
-                              )}
-                              <SiteLogo site={m.site} withLabel={false} />
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      )}
+                      <td className="px-4 py-2.5">
+                        {m ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium tabular">${m.price.toFixed(2)}</span>
+                            {m.float != null && (
+                              <span className={isFloatHighlight ? 'rounded bg-success/20 px-1.5 py-0.5 text-xs font-semibold text-success tabular' : 'text-xs text-muted-foreground tabular'}>
+                                {m.float.toFixed(4)}
+                              </span>
+                            )}
+                            <SiteLogo site={m.site} withLabel={false} />
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-3">
                           <a href={csmoneyLink(w)} target="_blank" rel="noreferrer" title="Open on CS.MONEY with this watch's filters" className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
@@ -384,7 +323,7 @@ export default function WatchlistsPage() {
         </div>
       )}
 
-      {watches && !isManual && (
+      {watches && (
         <div className="mt-8">
           <h2 className="text-sm font-medium">Recent activity on this bot</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">What it actually did — no need to check Telegram.</p>

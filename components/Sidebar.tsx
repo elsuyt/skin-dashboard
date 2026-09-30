@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   SparklesIcon,
   ListBulletIcon,
+  HandRaisedIcon,
   BanknotesIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
@@ -20,6 +21,9 @@ const SECTIONS = [
     links: [
       { href: '/', label: 'Best deals', icon: SparklesIcon },
       { href: '/watchlists', label: 'Watchlists', icon: ListBulletIcon },
+      // Was a tab hidden inside Watchlists — split out 2026-09-30 because it
+      // kept getting lost there. No bot involved; see app/manual/page.tsx.
+      { href: '/manual', label: 'Manual checking', icon: HandRaisedIcon },
     ],
   },
   {

@@ -49,9 +49,15 @@ export default function CartPage() {
     }
   }
 
-  // Poll hard for a couple of minutes after a checkout — the bot applies it on
-  // its own ~30s cycle, and waiting 15s per refresh to find out what happened
-  // is exactly the lag that sends you to Telegram instead.
+  // Poll hard for a few minutes after a checkout — the bot applies it on its
+  // own sync cycle, and waiting the idle interval per refresh to find out what
+  // happened is exactly the lag that sends you to Telegram instead. The window
+  // has to outlast a full round trip: a command pushed now isn't picked up
+  // until the bot's next pull (≤SYNC_MS away), and that tick already pushed
+  // its state BEFORE pulling, so the result isn't visible until the tick after
+  // that — up to 2×SYNC_MS. At the bot's 90s cycle that's 180s; 120s here used
+  // to be enough at the old 30s cycle but would now expire before the answer
+  // ever arrives. See checkout()'s comment for the exact number.
   useEffect(() => {
     setItems(null);
     setArmed(false);
@@ -80,7 +86,9 @@ export default function CartPage() {
       await api.checkout(botKey);
       setArmed(false);
       setQueued(true);
-      setBusyUntil(Date.now() + 120000); // fast-poll window
+      // 300s: 2×SYNC_MS round trip (180s at the bot's current 90s cycle) plus
+      // real margin for the actual buy calls to third-party markets on top.
+      setBusyUntil(Date.now() + 300000);
       setTimeout(load, 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -295,12 +303,12 @@ export default function CartPage() {
               {willBuy.length} item{willBuy.length === 1 ? '' : 's'} will be bought · <span className="tabular">{money(willSpend)}</span>
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Real money on the bot&apos;s own accounts. It runs on the bot&apos;s next sync, within ~30s, and reports to Telegram.
+              Real money on the bot&apos;s own accounts. It runs on the bot&apos;s next sync, within a couple of minutes, and reports to Telegram.
             </p>
           </div>
 
           {queued ? (
-            <span className="text-sm text-success">Checkout queued — the result appears below within ~30s.</span>
+            <span className="text-sm text-success">Checkout queued — the result appears below within a couple of minutes.</span>
           ) : armed ? (
             <div className="flex items-center gap-2">
               <button

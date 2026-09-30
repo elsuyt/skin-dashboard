@@ -237,7 +237,7 @@ export default function WatchlistsPage() {
           <p className="mt-3 text-xs text-muted-foreground/70">
             {isManual
               ? 'Not watched by anything — this only builds the marketplace links below with these ceilings. Added instantly.'
-              : 'Watches every market by default. The bot picks it up on its next sync, within ~30s.'}
+              : 'Watches every market by default. The bot picks it up on its next sync, within ~90s.'}
           </p>
         </form>
       </Card>

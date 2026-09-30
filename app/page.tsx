@@ -84,15 +84,21 @@ export default function BestDealsPage() {
   const [carts, setCarts] = useState<Record<string, CartItem[]>>({});
   const [buyingByBot, setBuyingByBot] = useState<Record<string, BuyingConfig | null>>({});
   const [checkoutQueued, setCheckoutQueued] = useState(false);
-  // A staged item only appears once the bot has polled (≤30s) and pushed back
-  // (≤30s). Without a faster window the page looked dead for up to a minute
-  // after every Add, which is most of why the cart felt broken.
+  // A staged item only appears once the bot has pulled the command (≤SYNC_MS)
+  // AND pushed the resulting state back (≤SYNC_MS) — and that push can't be
+  // the same tick as the pull, because tick() pushes BEFORE it pulls, so the
+  // result isn't visible until the tick after next: up to 2×SYNC_MS. Without a
+  // faster window here the page looked dead after every Add, which is most of
+  // why the cart felt broken. SYNC_MS is 90s (see the bots' dashboard-sync.cjs
+  // — raised from 30s on 2026-09-30 to stop 4 always-on bots idling past
+  // Upstash's free 500k-command/month cap), so the windows below sit above
+  // 180s rather than the old 60s worst case. Re-check these if SYNC_MS moves.
   const [boostUntil, setBoostUntil] = useState(0);
 
   async function addToCart(g: Group, m: WatchMatch) {
     setStaged((prev) => new Set(prev).add(m.matchId));
     setCartBot(g.bot);
-    setBoostUntil(Date.now() + 90000);
+    setBoostUntil(Date.now() + 200000);
     try {
       await api.addToCart(g.bot, g.watch.id, m.matchId);
     } catch (e) {
@@ -102,7 +108,7 @@ export default function BestDealsPage() {
   }
 
   async function removeFromCart(key: string) {
-    setBoostUntil(Date.now() + 60000);
+    setBoostUntil(Date.now() + 200000);
     try {
       await api.removeFromCart(cartBot, key);
     } catch (e) {
@@ -112,7 +118,7 @@ export default function BestDealsPage() {
 
   async function checkout() {
     setCheckoutQueued(true);
-    setBoostUntil(Date.now() + 180000);
+    setBoostUntil(Date.now() + 300000);
     try {
       await api.checkout(cartBot);
     } catch (e) {
@@ -204,7 +210,7 @@ export default function BestDealsPage() {
     }
     load();
     const fast = boostUntil && Date.now() < boostUntil;
-    const id = setInterval(load, fast ? 3000 : 30000);
+    const id = setInterval(load, fast ? 3000 : 90000);
     return () => { cancelled = true; clearInterval(id); };
   }, [boostUntil]);
 

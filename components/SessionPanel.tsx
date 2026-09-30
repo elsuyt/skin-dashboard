@@ -65,7 +65,7 @@ export function SessionPanel({
       const res = await api.pushSession(botKey, cookie, sessionid);
       // Only non-secret facts come back; the credential is never re-rendered.
       const left = res.expiresAt ? timeUntil(res.expiresAt) : null;
-      setDone(`Sent for ${res.steamId}${left ? ` · valid ${left}` : ''}. The bot installs it within ~30s.`);
+      setDone(`Sent for ${res.steamId}${left ? ` · valid ${left}` : ''}. The bot installs it within ~90s.`);
       setCookie('');
       setSessionid('');
       setTimeout(onApplied, 35000);
